@@ -1,6 +1,8 @@
 # Python virtual environment
 Lib/
 Scripts/
+venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo

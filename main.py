@@ -512,6 +512,9 @@ class LcarsApp(QStackedWidget):
 
 
 if __name__ == "__main__":
+    import PySide6
+    plugin_path = os.path.join(os.path.dirname(PySide6.__file__), "plugins")
+    os.environ["QT_PLUGIN_PATH"] = plugin_path
     app = QApplication(sys.argv)
     window = LcarsApp()
     window.setWindowFlags(Qt.FramelessWindowHint)
