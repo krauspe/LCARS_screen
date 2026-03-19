@@ -1,0 +1,20 @@
+# Python virtual environment
+Lib/
+Scripts/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
