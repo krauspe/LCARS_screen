@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 import pygame
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QThread, Signal
-from PySide6.QtGui import QPainter, QPainterPath, QColor
+from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QRadialGradient, QBrush, QFont
 
 # ── PALETTE ──────────────────────────────────────────────────────────────────
 TANGERINE  = "#FF9966"
@@ -332,8 +332,265 @@ class SysPage(QWidget):
             self.info.append(line)
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+#  WARP FIELD PAGE
+# ═════════════════════════════════════════════════════════════════════════════
+
+class WarpPage(QWidget):
+    """LCARS Warp Field Output — fully custom-painted, matching the canonical display."""
+
+    _SMIN = 10
+    _SMAX = 120
+
+    def __init__(self):
+        super().__init__()
+        self.setStyleSheet(f"background-color: {BG_BLACK};")
+
+        # 4 coil levels (10-120 scale)
+        self._levels  = [96.0, 101.0, 97.0, 91.0]
+        self._targets = [96.0, 101.0, 97.0, 91.0]
+
+        # Stripe scroll offset 0–1
+        self._scroll   = 0.0
+        self._warp_out = 206
+
+        # Scrolling data rows (top readout)
+        self._data = [self._gen_row() for _ in range(4)]
+
+        # Left sidebar labels
+        self._labels = [
+            f"{i:02d}-{random.randint(10000, 99999)}" for i in range(2, 14)
+        ]
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(50)   # 20 fps
+
+    @staticmethod
+    def _gen_row():
+        return "  ".join(str(random.randint(1, 99999999)) for _ in range(9))
+
+    def _tick(self):
+        self._scroll = (self._scroll + 0.04) % 1.0
+        for i in range(4):
+            self._targets[i] += random.uniform(-0.6, 0.6)
+            self._targets[i] = max(82.0, min(113.0, self._targets[i]))
+            diff = self._targets[i] - self._levels[i]
+            self._levels[i] += diff * 0.10 + random.uniform(-0.15, 0.15)
+        self._warp_out = int(200 + sum(self._levels) / 4 * 0.25)
+        if random.random() < 0.2:
+            self._data.pop(0)
+            self._data.append(self._gen_row())
+        self.update()
+
+    # ── paint dispatch ────────────────────────────────────────────────────────
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        W, H = self.width(), self.height()
+
+        HDR_H = max(80,  int(H * 0.22))
+        SEP_H = max(12,  int(H * 0.038))
+        SEP_Y = HDR_H
+        MTR_Y = SEP_Y + SEP_H + 6
+        MTR_H = H - MTR_Y - 4
+
+        self._paint_header(p, W, HDR_H)
+        self._paint_separator(p, W, SEP_Y, SEP_H)
+        self._paint_meters(p, W, MTR_Y, MTR_H)
+        p.end()
+
+    # ── header ────────────────────────────────────────────────────────────────
+    def _paint_header(self, p, W, H):
+        LBL_W = max(90, int(W * 0.11))
+
+        # Blue/lavender left panel
+        p.fillRect(0, 0, LBL_W, H, QColor(130, 130, 200))
+
+        lbl_font = QFont("Arial Narrow", 9, QFont.Bold)
+        p.setFont(lbl_font)
+        p.setPen(QPen(QColor(BG_BLACK)))
+        p.drawText(4,  6, LBL_W - 8, 18, Qt.AlignLeft | Qt.AlignVCenter, "LCARS 23295")
+        p.drawText(4, 28, LBL_W - 8, 18, Qt.AlignLeft | Qt.AlignVCenter, "01-23564")
+
+        # Scrolling data numbers
+        data_font = QFont("Courier New", 13, QFont.Bold)
+        p.setFont(data_font)
+        p.setPen(QPen(QColor(GOLD)))
+        row_h = max(14, (H - 8) // max(1, len(self._data)))
+        for i, row in enumerate(self._data):
+            p.drawText(LBL_W + 6, 4 + i * row_h,
+                       int(W * 0.52), row_h,
+                       Qt.AlignLeft | Qt.AlignVCenter, row)
+
+        # Title
+        tsz = max(14, int(H * 0.18))
+        p.setFont(QFont("Arial Narrow", tsz, QFont.Bold))
+        p.setPen(QPen(QColor(GOLD)))
+        p.drawText(int(W * 0.47), 2, int(W * 0.53) - 10, int(H * 0.52),
+                   Qt.AlignRight | Qt.AlignTop,
+                   f"WARP FIELD OUTPUT {self._warp_out}")
+
+        # Buttons (top-right)
+        BW  = max(80, int(W * 0.10))
+        BH  = max(20, int(H * 0.26))
+        BY  = int(H * 0.52)
+        GAP = 6
+        p.fillRect(W - BW * 2 - GAP * 2, BY,              BW, BH, QColor("#9090CC"))
+        p.fillRect(W - BW - GAP,          BY,              BW, BH, QColor(TANGERINE))
+        p.fillRect(W - BW - GAP,          BY + BH + GAP,   BW, BH, QColor(LILAC))
+
+        p.setFont(QFont("Arial Narrow", 9, QFont.Bold))
+        p.setPen(QPen(QColor(BG_BLACK)))
+        p.drawText(W - BW * 2 - GAP * 2, BY,            BW, BH, Qt.AlignCenter, "07-3215")
+        p.drawText(W - BW - GAP,          BY,            BW, BH, Qt.AlignCenter, "QUIT")
+        p.drawText(W - BW - GAP,          BY + BH + GAP, BW, BH, Qt.AlignCenter, "10-6215")
+
+    # ── separator bands ───────────────────────────────────────────────────────
+    def _paint_separator(self, p, W, y, h):
+        h1 = h * 2 // 3
+        p.fillRect(0, y,      W, h1,     QColor(TANGERINE))
+        p.fillRect(0, y + h1, W, h - h1, QColor(LILAC))
+        for xp in [int(W * 0.44), int(W * 0.49)]:
+            p.fillRect(xp, y,      16, h1,     QColor(GOLD))
+            p.fillRect(xp, y + h1, 16, h - h1, QColor(120, 90, 130))
+
+    # ── meters ────────────────────────────────────────────────────────────────
+    def _paint_meters(self, p, W, y, h):
+        LBL_W = max(90, int(W * 0.12))
+        self._paint_sidebar(p, 0, y, LBL_W, h)
+
+        avail = W - LBL_W
+        cw    = avail // 4
+
+        specs = [
+            (QColor(LIGHT_BLUE), QColor(TANGERINE), False),   # col 0
+            (QColor("#AABBEE"),  QColor(GOLD),      True),    # col 1 – special
+            (QColor(GOLD),       QColor("#CCCCCC"),  False),   # col 2
+            (QColor(GOLD),       QColor("#CCCCCC"),  False),   # col 3
+        ]
+        for i, (bc, ac, sp) in enumerate(specs):
+            self._paint_coil(p, LBL_W + i * cw, y, cw, h,
+                             self._levels[i], bc, ac, special=sp)
+
+    def _paint_sidebar(self, p, x, y, w, h):
+        n     = len(self._labels)
+        row_h = h // (n + 1)
+        p.setFont(QFont("Arial Narrow", 9))
+        for i, lbl in enumerate(self._labels):
+            ly = y + (i + 1) * row_h - row_h // 2
+            bg = QColor(TANGERINE) if i in (3, 8) else QColor(LIGHT_BLUE)
+            p.fillRect(x + 2, ly - 10, w - 8, 18, bg)
+            p.setPen(QPen(QColor(BG_BLACK)))
+            p.drawText(x + 2, ly - 10, w - 8, 18,
+                       Qt.AlignRight | Qt.AlignVCenter, lbl)
+            p.setPen(QPen(QColor(LILAC), 1))
+            p.drawLine(w - 2, ly, w + 2, ly)
+
+    def _paint_coil(self, p, x, y, w, h, level, bar_color, arrow_color, special=False):
+        sr    = self._SMAX - self._SMIN
+        SCL_W = max(26, int(w * 0.28))
+        ARW_W = max(14, int(w * 0.14))
+        PAD   = 3
+        cx1   = x + SCL_W
+        cw    = w - SCL_W - ARW_W - PAD
+        cy1   = y + PAD
+        ch    = h - PAD * 2
+
+        # Column background
+        p.fillRect(cx1, cy1, cw, ch, QColor(10, 10, 18))
+
+        # Level pixel position (top = scale_min, bottom = scale_max)
+        t_lvl = max(0.0, min(1.0, (level - self._SMIN) / sr))
+        lvl_y = cy1 + int(t_lvl * ch)
+
+        # ── Animated coil stripes ─────────────────────────────────────────────
+        N_BARS = 6 if special else 5
+        bar_w  = max(4, (cw - 6 - (N_BARS - 1) * 2) // N_BARS)
+        SEG_H  = 9
+        SEG_G  = 2
+        soff   = int(self._scroll * (SEG_H + SEG_G)) % (SEG_H + SEG_G)
+
+        for bi in range(N_BARS):
+            bx = cx1 + 3 + bi * (bar_w + 2)
+            sy = cy1 - soff
+            while sy < cy1 + ch:
+                top = max(sy, cy1)
+                bot = min(sy + SEG_H, cy1 + ch)
+                if bot > top:
+                    mid = (top + bot) / 2
+                    if mid <= lvl_y:
+                        dist = lvl_y - mid
+                        brt  = max(0.25, 1.0 - dist / (ch * 0.45))
+                        c    = QColor(bar_color)
+                        c.setAlpha(int(70 + 165 * brt))
+                    else:
+                        c = QColor(bar_color)
+                        c.setAlpha(22)
+                    p.fillRect(bx, top, bar_w, bot - top, c)
+                sy += SEG_H + SEG_G
+
+        # ── Warp-core overlay (2nd column) ────────────────────────────────────
+        if special:
+            mid_x  = cx1 + cw // 2
+            bh     = max(6, int(cw * 0.12))
+            xbar_h = max(8, int(ch * 0.05))
+            # Top & bottom cross-bars
+            p.fillRect(cx1 + 2, cy1 + int(ch * 0.10), cw - 4, xbar_h,
+                       QColor(140, 160, 210, 150))
+            p.fillRect(cx1 + 2, cy1 + int(ch * 0.84), cw - 4, xbar_h,
+                       QColor(140, 160, 210, 150))
+            # Center vertical shaft
+            p.fillRect(mid_x - bh, cy1 + int(ch * 0.15),
+                       bh * 2, int(ch * 0.69), QColor(80, 100, 180, 60))
+            # Red diamond at level
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(QColor("#CC2222")))
+            dp = QPainterPath()
+            dp.moveTo(mid_x,      lvl_y - 11)
+            dp.lineTo(mid_x + 16, lvl_y)
+            dp.lineTo(mid_x,      lvl_y + 11)
+            dp.lineTo(mid_x - 16, lvl_y)
+            dp.closeSubpath()
+            p.drawPath(dp)
+
+        # ── Bracket frame ─────────────────────────────────────────────────────
+        p.setPen(QPen(QColor(TANGERINE), 2))
+        p.setBrush(Qt.NoBrush)
+        arm = max(12, int(ch * 0.07))
+        cx2 = cx1 + cw
+        p.drawLine(cx1 - 1, cy1 + arm,          cx1 - 1, cy1)
+        p.drawLine(cx1 - 1, cy1,                 cx2,     cy1)
+        p.drawLine(cx2,     cy1,                 cx2,     cy1 + arm)
+        p.drawLine(cx1 - 1, cy1 + ch - arm,     cx1 - 1, cy1 + ch)
+        p.drawLine(cx1 - 1, cy1 + ch,            cx2,     cy1 + ch)
+        p.drawLine(cx2,     cy1 + ch,            cx2,     cy1 + ch - arm)
+
+        # ── Scale markers ─────────────────────────────────────────────────────
+        p.setFont(QFont("Arial Narrow", 9))
+        p.setPen(QPen(QColor(190, 190, 190)))
+        for val in range(self._SMIN, self._SMAX + 1, 10):
+            t  = (val - self._SMIN) / sr
+            vy = cy1 + int(t * ch)
+            p.drawLine(cx1 - 7, vy, cx1 - 1, vy)
+            p.drawText(x, vy - 7, SCL_W - 9, 14,
+                       Qt.AlignRight | Qt.AlignVCenter, f"— {val}")
+
+        # ── Arrow indicator ───────────────────────────────────────────────────
+        ax = cx2 + PAD + 1
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(arrow_color))
+        ap = QPainterPath()
+        ap.moveTo(ax + ARW_W, lvl_y - 9)
+        ap.lineTo(ax + 1,     lvl_y)
+        ap.lineTo(ax + ARW_W, lvl_y + 9)
+        ap.closeSubpath()
+        p.drawPath(ap)
+
+
 class VoicePage(QWidget):
     """Voice AI — command log and recognition status."""
+
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(self)
@@ -390,7 +647,8 @@ class BootScreen(QWidget):
         ("NAV-ARRAY",  LIGHT_BLUE, 2),
         ("ENG-GRID",   LILAC,      3),
         ("TAC-MODULE", TANGERINE,  4),
-        ("VOICE-AI",   GOLD,       5),
+        ("WARP-FIELD", LIGHT_BLUE, 5),
+        ("VOICE-AI",   GOLD,       6),
     ]
 
     def __init__(self, player):
@@ -498,7 +756,8 @@ class BootScreen(QWidget):
         self._stack.addWidget(NavPage())          # 2 – NAV-ARRAY
         self._stack.addWidget(EngPage())          # 3 – ENG-GRID
         self._stack.addWidget(TacPage(player))    # 4 – TAC-MODULE
-        self._stack.addWidget(self._voice_page)   # 5 – VOICE-AI
+        self._stack.addWidget(WarpPage())         # 5 – WARP-FIELD
+        self._stack.addWidget(self._voice_page)   # 6 – VOICE-AI
 
         body.addWidget(self._stack)
         outer.addLayout(body)
@@ -597,8 +856,10 @@ class BootScreen(QWidget):
             self._change_page(2)
         elif "system" in cmd or "core" in cmd:
             self._change_page(1)
-        elif "voice" in cmd:
+        elif "warp" in cmd:
             self._change_page(5)
+        elif "voice" in cmd:
+            self._change_page(6)
         elif "exit" in cmd or "quit" in cmd:
             self._safe_exit()
 
@@ -631,6 +892,8 @@ class BootScreen(QWidget):
             self._change_page(4)
         elif key == Qt.Key_5:
             self._change_page(5)
+        elif key == Qt.Key_6:
+            self._change_page(6)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
