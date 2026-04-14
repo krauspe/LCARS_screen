@@ -1258,3 +1258,452 @@ The root cause was `pyaudio` not being installed —  needs it to access the mic
 - *"Computer voice"* → VOICE-AI  
 - *"Computer exit"* → closes the app
 
+**User**
+create another page, entered by a button named "warp field",
+which looks pretty much like this https://www.youtube.com/watch?v=oV0lEVifx4Q&list=PLah0JzbIlDe8vDgRiKqmX7yTxDFh4yEYA&index=7
+
+**Copilot**
+The user wants me to fetch the YouTube video to understand what the "warp field" visualization looks like. Let me fetch the page to get more context about what's in video index 7 of this playlist.
+
+Actually, I can't really "watch" a YouTube video, but I can fetch the page to see the title/description, and then I'll use my knowledge of LCARS-style warp field displays to create something appropriate.
+
+Let me fetch the YouTube page to understand what it looks like at least from the title/description.
+
+> **[copilot_fetchWebPage]** Used tool
+
+
+> **[vscode_fetchWebPage_internal]** Fetched https://www.youtube.com/watch?v=oV0lEVifx4Q
+I can't access the YouTube video since it requires Google login. But based on the playlist context and typical LCARS warp field displays, I know what these look like:
+
+1. A warp field diagnostic page typically shows:
+   - Animated concentric ellipses/rings that pulse outward (simulating warp field geometry)
+   - Color gradients from blue/teal at center to lighter at edges
+   - Numerical readouts like warp factor, field geometry, plasma conduit pressure, etc.
+   - Status bars showing field integrity, nacelle balance, etc.
+   - Maybe a graph or oscilloscope-style waveform
+   - LCARS-style labeled panels with that characteristic orange/purple/gold color scheme
+
+Now I'm going to create a WarpPage class that renders an animated warp geometry visualization with warp factor readouts, field integrity metrics, and nacelle status indicators, then integrate it into the main application structure.
+
+Building the warp visualization widget...
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#1-1), lines 1 to 60
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#260-260), lines 260 to 400
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#455-455), lines 455 to 530
+Now I have enough context. I'll:
+1. Add a `WarpFieldWidget` (QPainter animated rings) and `WarpPage` class before 
+2. Add `"WARP-FIELD"` to  (index 6)
+3. Register it in the stack
+4. Add keyboard shortcut `6` 
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#12-12), lines 12 to 15
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#615-615), lines 615 to 625
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#12-12), lines 12 to 15
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#615-615), lines 615 to 625
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#625-625), lines 625 to 638
+Now I have everything. Let me implement all four changes at once: 
+
+> **[copilot_multiReplaceString]** Used tool
+
+
+> **[copilot_multiReplaceString]** Replacing 22 lines with 254 lines in [](file:///e%3A/prog/python/LCARS_screen/main.py)
+
+```
+
+```
+Also need to fix the  VOICE-AI reference since index changed from 5 to 6: 
+
+> **[copilot_findTextInFiles]** Searched for text `elif \"voice\" in cmd`, no results
+
+
+> **[copilot_findTextInFiles]** Searched for text `voice in cmd`, no results
+
+
+> **[copilot_findTextInFiles]** Searched for text `elif \"voice\" in cmd`, no results
+
+
+> **[copilot_findTextInFiles]** Searched for text `voice in cmd`, no results
+
+
+> **[copilot_findTextInFiles]** Searched for text `_handle_voice`, 2 results
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#816-816), lines 816 to 835
+The multi-replace produced a duplicated/misordered block. Let me fix it cleanly:  
+
+> **[copilot_replaceString]** Replacing 18 lines with 16 lines in [](file:///e%3A/prog/python/LCARS_screen/main.py)
+
+```
+
+```
+Also fix the  check — ENG-GRID is still index 3, but VOICE-AI shifted to 6, so the diag check is fine. Let's also check the  ENG-GRID guard: 
+
+> **[copilot_findTextInFiles]** Searched for text `_play_diag_complete`, 2 results
+Good — ENG-GRID is still index 3, that's unchanged. Now validate:  
+
+> **[copilot_getErrors]** Checked [](file:///e%3A/prog/python/LCARS_screen/main.py), no problems found
+No errors. Here's what was added:
+
+**WARP-FIELD page** — a new sidebar button (6th slot, light blue) leading to two panels:
+
+**Left — animated warp geometry canvas (QPainter):**
+- 18 concentric ellipses travelling outward continuously, accelerating with warp factor
+- Colour transitions deep blue → cyan → white as each ring expands
+- Ring brightness fades in from the centre and out at the edge
+- Central radial glow (blue haze)
+- Warp factor readout at the bottom
+
+**Right — live telemetry bars:**
+- WARP FACTOR (tracks the animation's simulated WF 1.0–9.9)
+- PORT NACELLE / STBD NACELLE balance
+- PLASMA FLOW
+- FIELD INTEGRITY (turns red + warning message if it dips below 88%)
+- COIL RESONANCE
+- Scrolling block-character oscilloscope waveform labelled "SUBSPACE"
+
+**Access:** sidebar button `WARP-FIELD`, keyboard `6`, or voice *"Computer warp"*.
+
+**User**
+this is not what I wanted. Maybe you must create some more elements:
+Try to make it look like the picture and animate like in the movie:
+
+
+**Copilot**
+The user has shared an image of a LCARS "Warp Field Output" display from Star Trek. Let me analyze what I see in the image:
+
+1. **Top section**: 
+   - Header "WARP FIELD OUTPUT 206" in orange/gold at top right
+   - Data numbers displayed in a grid (scrolling telemetry data)
+   - "LCARS 23295" and "01-23564" labels on the left
+   - Two buttons on the right: "07The user has shared an image of a LCARS "Warp Field Output" display from Star Trek. Let me analyze what I see in the image:
+
+1. **Top section**: 
+   - Header "WARP FIELD OUTPUT 206" in orange/gold at top right
+   - Data numbers displayed in a grid (scrolling telemetry data)
+   - "LCARS 23295" and "01-23564" labels on the left
+   - Two buttons on the right: "07-3215" (blue/lavender) and "QUIT" (orange), and "10-6215" (reddish/mauve)
+
+2. **Middle separator**: Two horizontal bars (orange/gold and lilac/purple) with small rectangles/segments
+   
+3. **Bottom section**: The main display area has a left sidebar with numbered parameter labels in orange and white text, and four vertical meter columns with scale markings from 10 to 100 that appear to show real-time warp field output readings.
+
+The columns themselves are segmented visualizations with animated indicators—arrow or diamond shapes that move vertically to show current levels, with color coding differentiating the left pair (blue/lilac), the center column (featuring a red diamond), and the right column (orange/gold). These animated elements create the impression of live warp coil activity.
+
+Now I'm looking at the existing WarpPage and WarpFieldCanvas components to understand how to rebuild them and match this visual design with the animated meter columns, scale markings, and dynamic indicators. Building the WarpCoilMeter component... I'm looking more carefully at the layout structure—there's a far left sidebar with labels, then four meter columns where the third one has that distinctive warp core shape with the red diamond, and all of them have the segmented coil visualization with animated stripes and arrow indicators showing the current level.
+
+Now I need to figure out how to render this in PySide6 using QPainter—I'll draw the column backgrounds, then layer the vertical stripe segments with selective highlighting based on the level, and add the bracket frames and directional arrows around each meter. I'm settling on a design where each column contains five thin vertical bars that are segmented like a ladder, with the active zone lighting up brighter from the bottom to the current level and an arrow indicator marking the exact reading. I'll animate the level values to oscillate with different patterns per column and add an upward scrolling effect within the bars for that classic LCARS feel. Now I'm rewriting the implementation to replace the existing classes.
+
+Defining the meter widget class...The user has shared an image of a LCARS "Warp Field Output" display from Star Trek. Let me analyze what I see in the image:
+
+1. **Top section**: 
+   - Header "WARP FIELD OUTPUT 206" in orange/gold at top right
+   - Data numbers displayed in a grid (scrolling telemetry data)
+   - "LCARS 23295" and "01-23564" labels on the left
+   - Two buttons on the right: "07-3215" (blue/lavender) and "QUIT" (orange), and "10-6215" (reddish/mauve)
+
+2. **Middle separator**: Two horizontal bars (orange/gold and lilac/purple) with small rectangles/segments
+   
+3. **Bottom section**: The main display area has a left sidebar with numbered parameter labels in orange and white text, and four vertical meter columns with scale markings from 10 to 100 that appear to show real-time warp field output readings.
+
+The columns themselves are segmented visualizations with animated indicators—arrow or diamond shapes that move vertically to show current levels, with color coding differentiating the left pair (blue/lilac), the center column (featuring a red diamond), and the right column (orange/gold). These animated elements create the impression of live warp coil activity.
+
+Now I'm looking at the existing WarpPage and WarpFieldCanvas components to understand how to rebuild them and match this visual design with the animated meter columns, scale markings, and dynamic indicators. Building the WarpCoilMeter component... I'm looking more carefully at the layout structure—there's a far left sidebar with labels, then four meter columns where the third one has that distinctive warp core shape with the red diamond, and all of them have the segmented coil visualization with animated stripes and arrow indicators showing the current level.
+
+Now I need to figure out how to render this in PySide6 using QPainter—I'll draw the column backgrounds, then layer the vertical stripe segments with selective highlighting based on the level, and add the bracket frames and directional arrows around each meter. I'm settling on a design where each column contains five thin vertical bars that are segmented like a ladder, with the active zone lighting up brighter from the bottom to the current level and an arrow indicator marking the exact reading. I'll animate the level values to oscillate with different patterns per column and add an upward scrolling effect within the bars for that classic LCARS feel. Now I'm rewriting the implementation to replace the existing classes.
+
+Defining the meter widget class... Writing the gauge rendering... Still writing rendering logic... Finishing the arrow path drawing...
+
+Now I'm reconsidering the overall layout by looking at the image more carefully. The bottom section has a narrow left sidebar with blue labels, then four coil meter groups arranged horizontally. Each group contains scale labels on the left, a framed column with vertical stripes, and an arrow indicator. The first three columns look similar with triangular arrows, but the third column from the left stands out—it's wider with a distinctive shape in the middle, almost like a tuning fork or H-shaped element. Let me recount the columns from the image to make sure I'm understanding the structure correctly.
+
+Looking at the four columns from left to right: the leftmost has an orange bracket with blue stripes and an orange arrow around the 100 level; the second column is wider with a special H-shaped element in the middle, a blue body, yellow arrow at 100, and a red diamond also at 100; the third column has an orange bracket with gold stripes and a gray arrow at 100; and the fourth partial column on the right edge shows an orange bracket with gold stripes and a gray arrow at 90.
+
+Now I'm planning the implementation approach: I'll draw each warp coil column as a series of rectangles with horizontal gaps to create that ladder pattern, then animate them by scrolling the pattern over time. Each column will have a pointed chevron level indicator on the right side, and I'll handle all the drawing with a custom widget using QPainter in its paintEvent, with a QTimer driving the animation loop.
+
+Setting up the class structure with state tracking for the four coil meters—their current levels, target levels, the stripe scroll offset, and the telemetry data that scrolls across the top...
+
+Initializing the label list with random identifiers, populating the initial data rows, and starting a timer that ticks at about 12 frames per second to drive the animations and scroll effects.
+
+Defining the data generation and tick logic... Writing the paint event... Writing the UI layout... Writing the separator method...
+
+Now I'm setting up the meters section with a left sidebar for labels and four columns for the meter displays, each with their own color scheme and arrow indicators. Writing the meter drawing logic... Drawing the bracket lines...The user has shared an image of a LCARS "Warp Field Output" display from Star Trek. Let me analyze what I see in the image:
+
+1. **Top section**: 
+   - Header "WARP FIELD OUTPUT 206" in orange/gold at top right
+   - Data numbers displayed in a grid (scrolling telemetry data)
+   - "LCARS 23295" and "01-23564" labels on the left
+   - Two buttons on the right: "07-3215" (blue/lavender) and "QUIT" (orange), and "10-6215" (reddish/mauve)
+
+2. **Middle separator**: Two horizontal bars (orange/gold and lilac/purple) with small rectangles/segments
+   
+3. **Bottom section**: The main display area has a left sidebar with numbered parameter labels in orange and white text, and four vertical meter columns with scale markings from 10 to 100 that appear to show real-time warp field output readings.
+
+The columns themselves are segmented visualizations with animated indicators—arrow or diamond shapes that move vertically to show current levels, with color coding differentiating the left pair (blue/lilac), the center column (featuring a red diamond), and the right column (orange/gold). These animated elements create the impression of live warp coil activity.
+
+Now I'm looking at the existing WarpPage and WarpFieldCanvas components to understand how to rebuild them and match this visual design with the animated meter columns, scale markings, and dynamic indicators. Building the WarpCoilMeter component... I'm looking more carefully at the layout structure—there's a far left sidebar with labels, then four meter columns where the third one has that distinctive warp core shape with the red diamond, and all of them have the segmented coil visualization with animated stripes and arrow indicators showing the current level.
+
+Now I need to figure out how to render this in PySide6 using QPainter—I'll draw the column backgrounds, then layer the vertical stripe segments with selective highlighting based on the level, and add the bracket frames and directional arrows around each meter. I'm settling on a design where each column contains five thin vertical bars that are segmented like a ladder, with the active zone lighting up brighter from the bottom to the current level and an arrow indicator marking the exact reading. I'll animate the level values to oscillate with different patterns per column and add an upward scrolling effect within the bars for that classic LCARS feel. Now I'm rewriting the implementation to replace the existing classes.
+
+Defining the meter widget class... Writing the gauge rendering... Still writing rendering logic... Finishing the arrow path drawing...
+
+Now I'm reconsidering the overall layout by looking at the image more carefully. The bottom section has a narrow left sidebar with blue labels, then four coil meter groups arranged horizontally. Each group contains scale labels on the left, a framed column with vertical stripes, and an arrow indicator. The first three columns look similar with triangular arrows, but the third column from the left stands out—it's wider with a distinctive shape in the middle, almost like a tuning fork or H-shaped element. Let me recount the columns from the image to make sure I'm understanding the structure correctly.
+
+Looking at the four columns from left to right: the leftmost has an orange bracket with blue stripes and an orange arrow around the 100 level; the second column is wider with a special H-shaped element in the middle, a blue body, yellow arrow at 100, and a red diamond also at 100; the third column has an orange bracket with gold stripes and a gray arrow at 100; and the fourth partial column on the right edge shows an orange bracket with gold stripes and a gray arrow at 90.
+
+Now I'm planning the implementation approach: I'll draw each warp coil column as a series of rectangles with horizontal gaps to create that ladder pattern, then animate them by scrolling the pattern over time. Each column will have a pointed chevron level indicator on the right side, and I'll handle all the drawing with a custom widget using QPainter in its paintEvent, with a QTimer driving the animation loop.
+
+Setting up the class structure with state tracking for the four coil meters—their current levels, target levels, the stripe scroll offset, and the telemetry data that scrolls across the top...
+
+Initializing the label list with random identifiers, populating the initial data rows, and starting a timer that ticks at about 12 frames per second to drive the animations and scroll effects.
+
+Defining the data generation and tick logic... Writing the paint event... Writing the UI layout... Writing the separator method...
+
+Now I'm setting up the meters section with a left sidebar for labels and four columns for the meter displays, each with their own color scheme and arrow indicators. Writing the meter drawing logic... Drawing the bracket lines... Still writing rendering logic... Writing the warp core shape... Writing the scale markers and arrow indicator... I'm realizing the center column represents a cross-section of the warp core itself—an H-beam or I-beam shape with horizontal bars at top and bottom connected by a narrow channel for plasma flow. Now I need to finalize the implementation as a single custom widget that handles the entire display, organizing it into a header section at the top, separator bands, and a large meter area below with a left label strip and four meter columns.
+
+Looking at the scale positioning more carefully, each meter column has its own scale markers positioned to the left of the coil region, displayed with dashes before the numbers like "— 10", "— 20", and so on, separate from the sidebar labels on the far left.
+
+Now I'm implementing the complete WarpPage class to replace the old canvas and page components with a single custom-painted widget that handles all animation through a timer...
+
+Writing the WarpPage implementation... I'm setting up helper methods to generate random data rows and handle the animation loop—each tick updates the scroll position, drifts the meter targets within bounds, smoothly interpolates the levels toward those targets with some noise, recalculates the warp output based on the average level, and then scrolls the data rows.
+
+Now I'm implementing the paint event to set up the layout—calculating header height, separator height, and meter area, then delegating to helper methods to paint each section.
+
+Writing the header panel... Writing the display layout... Writing the separator and meters layout... Finishing up the coil painting with the remaining two columns, then moving into the sidebar labels where I'm setting up font styling and drawing highlighted backgrounds for specific label rows.
+
+Now I'm implementing the coil painting method that handles the scale calculations and positioning for each coil element...The user has shared an image of a LCARS "Warp Field Output" display from Star Trek. Let me analyze what I see in the image:
+
+1. **Top section**: 
+   - Header "WARP FIELD OUTPUT 206" in orange/gold at top right
+   - Data numbers displayed in a grid (scrolling telemetry data)
+   - "LCARS 23295" and "01-23564" labels on the left
+   - Two buttons on the right: "07-3215" (blue/lavender) and "QUIT" (orange), and "10-6215" (reddish/mauve)
+
+2. **Middle separator**: Two horizontal bars (orange/gold and lilac/purple) with small rectangles/segments
+   
+3. **Bottom section**: The main display area has a left sidebar with numbered parameter labels in orange and white text, and four vertical meter columns with scale markings from 10 to 100 that appear to show real-time warp field output readings.
+
+The columns themselves are segmented visualizations with animated indicators—arrow or diamond shapes that move vertically to show current levels, with color coding differentiating the left pair (blue/lilac), the center column (featuring a red diamond), and the right column (orange/gold). These animated elements create the impression of live warp coil activity.
+
+Now I'm looking at the existing WarpPage and WarpFieldCanvas components to understand how to rebuild them and match this visual design with the animated meter columns, scale markings, and dynamic indicators. Building the WarpCoilMeter component... I'm looking more carefully at the layout structure—there's a far left sidebar with labels, then four meter columns where the third one has that distinctive warp core shape with the red diamond, and all of them have the segmented coil visualization with animated stripes and arrow indicators showing the current level.
+
+Now I need to figure out how to render this in PySide6 using QPainter—I'll draw the column backgrounds, then layer the vertical stripe segments with selective highlighting based on the level, and add the bracket frames and directional arrows around each meter. I'm settling on a design where each column contains five thin vertical bars that are segmented like a ladder, with the active zone lighting up brighter from the bottom to the current level and an arrow indicator marking the exact reading. I'll animate the level values to oscillate with different patterns per column and add an upward scrolling effect within the bars for that classic LCARS feel. Now I'm rewriting the implementation to replace the existing classes.
+
+Defining the meter widget class... Writing the gauge rendering... Still writing rendering logic... Finishing the arrow path drawing...
+
+Now I'm reconsidering the overall layout by looking at the image more carefully. The bottom section has a narrow left sidebar with blue labels, then four coil meter groups arranged horizontally. Each group contains scale labels on the left, a framed column with vertical stripes, and an arrow indicator. The first three columns look similar with triangular arrows, but the third column from the left stands out—it's wider with a distinctive shape in the middle, almost like a tuning fork or H-shaped element. Let me recount the columns from the image to make sure I'm understanding the structure correctly.
+
+Looking at the four columns from left to right: the leftmost has an orange bracket with blue stripes and an orange arrow around the 100 level; the second column is wider with a special H-shaped element in the middle, a blue body, yellow arrow at 100, and a red diamond also at 100; the third column has an orange bracket with gold stripes and a gray arrow at 100; and the fourth partial column on the right edge shows an orange bracket with gold stripes and a gray arrow at 90.
+
+Now I'm planning the implementation approach: I'll draw each warp coil column as a series of rectangles with horizontal gaps to create that ladder pattern, then animate them by scrolling the pattern over time. Each column will have a pointed chevron level indicator on the right side, and I'll handle all the drawing with a custom widget using QPainter in its paintEvent, with a QTimer driving the animation loop.
+
+Setting up the class structure with state tracking for the four coil meters—their current levels, target levels, the stripe scroll offset, and the telemetry data that scrolls across the top...
+
+Initializing the label list with random identifiers, populating the initial data rows, and starting a timer that ticks at about 12 frames per second to drive the animations and scroll effects.
+
+Defining the data generation and tick logic... Writing the paint event... Writing the UI layout... Writing the separator method...
+
+Now I'm setting up the meters section with a left sidebar for labels and four columns for the meter displays, each with their own color scheme and arrow indicators. Writing the meter drawing logic... Drawing the bracket lines... Still writing rendering logic... Writing the warp core shape... Writing the scale markers and arrow indicator... I'm realizing the center column represents a cross-section of the warp core itself—an H-beam or I-beam shape with horizontal bars at top and bottom connected by a narrow channel for plasma flow. Now I need to finalize the implementation as a single custom widget that handles the entire display, organizing it into a header section at the top, separator bands, and a large meter area below with a left label strip and four meter columns.
+
+Looking at the scale positioning more carefully, each meter column has its own scale markers positioned to the left of the coil region, displayed with dashes before the numbers like "— 10", "— 20", and so on, separate from the sidebar labels on the far left.
+
+Now I'm implementing the complete WarpPage class to replace the old canvas and page components with a single custom-painted widget that handles all animation through a timer...
+
+Writing the WarpPage implementation... I'm setting up helper methods to generate random data rows and handle the animation loop—each tick updates the scroll position, drifts the meter targets within bounds, smoothly interpolates the levels toward those targets with some noise, recalculates the warp output based on the average level, and then scrolls the data rows.
+
+Now I'm implementing the paint event to set up the layout—calculating header height, separator height, and meter area, then delegating to helper methods to paint each section.
+
+Writing the header panel... Writing the display layout... Writing the separator and meters layout... Finishing up the coil painting with the remaining two columns, then moving into the sidebar labels where I'm setting up font styling and drawing highlighted backgrounds for specific label rows.
+
+Now I'm implementing the coil painting method that handles the scale calculations and positioning for each coil element...
+
+Still writing coil rendering... Writing the warp-core overlay... Drawing the bracket frame... Finishing the arrow path...
+
+Now I need to figure out how to integrate this into the file. I should keep the section separator comment before VoicePage, then replace the entire "WARP FIELD PAGE" section with the new WarpPage implementation. First I need to check if QSizePolicy is used anywhere else before removing that import, and I should look at what's currently between TacPage and VoicePage to see exactly what I'm replacing.
+
+Looking back at the initial file read, QSizePolicy is already imported along with QRadialGradient, QBrush, and QFont from the previous session, so I'm good there.
+
+Now I need to find the exact boundaries of the WarpFieldCanvas and WarpPage sections to identify what to replace. Let me locate where WarpFieldCanvas starts and where it ends before VoicePage begins. I need to identify the exact boundaries of the section to replace—from the "WARP FIELD PAGE" comment header through the end of the WarpPage class definition, stopping right before VoicePage starts.
+
+> **[copilot_findTextInFiles]** Searched for text `WARP FIELD PAGE`, 1 result
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#333-333), lines 333 to 560
+Now I have the exact content I need to replace. I'll replace everything from the `# ═══...WARP FIELD PAGE...═══` section through the end of `WarpPage` (just before `class VoicePage`).
+
+Let me write the complete new implementation as one big replace.
+
+The new WarpPage will:
+1. Be a single fully-custom-painted widget
+2. Have an animated top section with scrolling numbers + title "WARP FIELD OUTPUT 206" + buttons
+3. Have separator bands 
+4. Have 4 coil meter columns with:
+   - Scale markers (10-120)
+   - Vertical striped columns that scroll upward
+   - Level arrows that move
+   - The 2nd column has special warp core shape + red diamond
+5. Left sidebar labels
+
+Writing the WarpPage class...Now I have the exact content I need to replace. I'll replace everything from the `# ═══...WARP FIELD PAGE...═══` section through the end of `WarpPage` (just before `class VoicePage`).
+
+Let me write the complete new implementation as one big replace.
+
+The new WarpPage will:
+1. Be a single fully-custom-painted widget
+2. Have an animated top section with scrolling numbers + title "WARP FIELD OUTPUT 206" + buttons
+3. Have separator bands 
+4. Have 4 coil meter columns with:
+   - Scale markers (10-120)
+   - Vertical striped columns that scroll upward
+   - Level arrows that move
+   - The 2nd column has special warp core shape + red diamond
+5. Left sidebar labels
+
+Writing the WarpPage class... I'm setting up the sidebar labels with formatted identifiers, then initializing a timer that runs at 20 fps to drive the animation loop. In each tick, I'm scrolling the stripe pattern, updating the coil level targets with random fluctuations within bounds, and smoothly interpolating the actual levels toward those targets.
+
+Continuing with the paint logic... Still writing the display code... Writing button labels and separator bands... Writing the meter visualization... Still writing the coil rendering... Writing the visualization rendering... Still writing the diamond shape...
+
+Now I'm completing the bracket frame by drawing the remaining corner arms in tangerine, then setting up the scale markers with a smaller font and lighter gray color to iterate through the value range.
+
+Finishing the scale markers and arrow indicator...
+
+Now I need to replace the entire old WarpFieldCanvas and WarpPage sections with the new implementation. I'll need to match the exact text from the section header through the class definition, being careful with the boundaries since the file is large and the replacement string needs to be precise. I'm working through how to safely replace a large section of Python code spanning about 224 lines. Since I already have the exact file content, I need to construct the precise oldString from the complete text between the warp field section header and the VoicePage class to ensure the replacement doesn't fail on whitespace mismatches. I need to identify the exact boundaries of the WarpPage class in the file so I can construct the proper oldString and newString for the replacement. Looking at the line numbers from my read, the WarpPage section starts with the comment block at line 334
+
+> **[copilot_findTextInFiles]** Searched for text `WARP FIELD PAGE`, 1 result
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#333-333), lines 333 to 560
+Now I have the exact content I need to replace. I'll replace everything from the `# ═══...WARP FIELD PAGE...═══` section through the end of `WarpPage` (just before `class VoicePage`).
+
+Let me write the complete new implementation as one big replace.
+
+The new WarpPage will:
+1. Be a single fully-custom-painted widget
+2. Have an animated top section with scrolling numbers + title "WARP FIELD OUTPUT 206" + buttons
+3. Have separator bands 
+4. Have 4 coil meter columns with:
+   - Scale markers (10-120)
+   - Vertical striped columns that scroll upward
+   - Level arrows that move
+   - The 2nd column has special warp core shape + red diamond
+5. Left sidebar labels
+
+Writing the WarpPage class... I'm setting up the sidebar labels with formatted identifiers, then initializing a timer that runs at 20 fps to drive the animation loop. In each tick, I'm scrolling the stripe pattern, updating the coil level targets with random fluctuations within bounds, and smoothly interpolating the actual levels toward those targets.
+
+Continuing with the paint logic... Still writing the display code... Writing button labels and separator bands... Writing the meter visualization... Still writing the coil rendering... Writing the visualization rendering... Still writing the diamond shape...
+
+Now I'm completing the bracket frame by drawing the remaining corner arms in tangerine, then setting up the scale markers with a smaller font and lighter gray color to iterate through the value range.
+
+Finishing the scale markers and arrow indicator...
+
+Now I need to replace the entire old WarpFieldCanvas and WarpPage sections with the new implementation. I'll need to match the exact text from the section header through the class definition, being careful with the boundaries since the file is large and the replacement string needs to be precise. I'm working through how to safely replace a large section of Python code spanning about 224 lines. Since I already have the exact file content, I need to construct the precise oldString from the complete text between the warp field section header and the VoicePage class to ensure the replacement doesn't fail on whitespace mismatches. I need to identify the exact boundaries of the WarpPage class in the file so I can construct the proper oldString and newString for the replacement. Looking at the line numbers from my read, the WarpPage section starts with the comment block at line 334 and ends with the `self._wave_lbl.setText` call around line 557, followed by two blank lines before VoicePage begins at line 558. I'll use the full content from line 333 through line 557 as my oldString to ensure I capture everything correctly. I'm going to use the exact file content I already have and set my oldString to include the full WarpPage section from the comment header through the final blank lines before VoicePage starts, then my replacement will end cleanly at those same blank lines without touching VoicePage at all. I need to match the exact substring in the file for the replacement to work, so I'll include the section header and the end of the WarpPage class to create a unique match. The replace_string_in_file function does a substring match, so I have to provide the complete text I want to replace—I can't do partial replacements. Let me construct the oldString carefully with the distinctive "WARP FIELD PAGE" header and the final lines of the WarpPage implementation to ensure it matches uniquely. I'm realizing the oldString needs to be one continuous block from the file, so I can't skip over middle content—I'll just include the entire section from the comment header all the way through to the `self._wave_lbl.setText(...)` line, even if it makes for a lengthy tool call. I'm realizing I need to do a single large replacement spanning from the blank line before the comment header all the way through the end of the WarpPage class around line 557, since trying to match individual class definitions requires exact text matching. Let me prepare the oldString carefully by identifying the exact boundaries - starting with the blank line at line 333 and the comment block, then including both the WarpFieldCanvas and WarpPage classes, ending with the final `self._wave_lbl.setText` call. The newString will follow the same structure but contain only the new WarpPage implementation. I need to nail down the exact boundaries for the string replacement—starting from the section header with its preceding newline and ending right after the last method of WarpPage, making sure my oldString matches the file content precisely. Let me verify my new implementation doesn't use QSizePolicy like the old one did, then I'll finalize the replacement code.Now I have the exact content to replace. I'll rewrite the entire  section as a fully custom-painted LCARS warp field output display matching the screenshot: 4 coil meter columns with animated scrolling stripes, bracket frames, scale markers, moving arrow indicators, special warp-core overlay on the 2nd column with a red diamond, scrolling data numbers header, and separator bands. 
+
+> **[copilot_replaceString]** Used tool
+
+
+> **[copilot_replaceString]** Replacing 227 lines with 260 lines in [](file:///e%3A/prog/python/LCARS_screen/main.py)
+
+```
+
+```
+
+
+> **[copilot_getErrors]** Checked [](file:///e%3A/prog/python/LCARS_screen/main.py), no problems found
+No errors. Here's what the new WARP-FIELD page looks like:
+
+**Top section — "WARP FIELD OUTPUT 206":**
+- Blue/lavender left panel with `LCARS 23295` / `01-23564` labels
+- 4 rows of scrolling random data numbers in gold (like the top readout in the screenshot)
+- Large gold title `WARP FIELD OUTPUT ###` (number updates live)
+- Three LCARS-style buttons: `07-3215` (lavender), `QUIT` (orange), `10-6215` (lilac)
+
+**Separator — two horizontal bands:** orange + lilac with gold accent blocks
+
+**Main warp coil display:**
+- Left sidebar: 12 numbered labels (every 3rd highlighted in orange/blue)
+- **4 coil meter columns**, each with:
+  - `— 10` through `— 120` scale markers with tick marks
+  - Vertical striped bars (5–6 per column) that **scroll upward continuously** animated at 20 fps
+  - Bars glow bright near the level line and dim above it
+  - LCARS corner-bracket frame in orange
+  - Colored **arrow/chevron indicator** that slides smoothly to the current level
+- **Column 2** (special): wider bars (6), blue `I-beam` warp core overlay (top/bottom crossbars + center shaft), **red diamond** at the level position
+- Levels drift independently and smoothly oscillate between ~82–113
+
+**User**
+the numbers in the red marked areas are too small, the numbers in the green marked ares are too big (not readable) 
+
+**Copilot**
+Looking at the screenshot, the user has marked:
+- **Red area**: The scrolling data numbers in the header (top section) - they're too small
+- **Green areas**: The scale marker numbers on the left side of each coil column (the "— 10", "— 20" etc.) - they're too big and not readable
+
+Let me look at the paint code to find where these are set.
+
+For the header data numbers: `data_font = QFont("Courier New", 9, QFont.Bold)` - too small
+For the scale markers: `p.setFont(QFont("Arial Narrow", max(7, int(ch / 130 * 7))))` - the formula makes them too big
+
+
+Now I'm looking at the scale marker rendering code...
+
+Examining the scale markers code...
+
+The font size calculation is problematic—when the chart height is large, like 500 pixels, the formula produces a font size around 27, which is way too large for those small tick labels. I need to cap the scale marker font at something reasonable, maybe around 8-9 pixels, while bumping up the header data numbers to 12-13 for better visibility.
+
+> **[copilot_findTextInFiles]** Searched for text `data_font = QFont`, 1 result
+
+
+> **[copilot_findTextInFiles]** Searched for text `ch / 130 * 7`, 1 result
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#414-414), lines 414 to 422
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#567-567), lines 567 to 579
+
+
+> **[copilot_multiReplaceString]** Replacing 5 lines with 5 lines in [](file:///e%3A/prog/python/LCARS_screen/main.py)
+
+```
+
+```
+- **Header data numbers**: font size `9` → `13` (larger, more readable)
+- **Scale markers** (`— 10`, `— 20` … `— 120`): replaced the dynamic formula (which grew huge on tall windows) with a fixed `size 8` — always compact and fitting beside the coil columns
+
+**User**
+the numbers in the upper area shouldn't overlapp with the text "WARP FILED OUTPUT <nr>". remove one column. Now the number previously way too big could be a bit bigger
+
+**Copilot**
+The user wants:
+1. Remove one column of numbers in the header data section so they don't overlap with "WARP FIELD OUTPUT <nr>"
+2. Make the scale marker numbers slightly bigger
+
+Let me look at the header paint code to understand the layout.
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#400-400), lines 400 to 445
+
+
+> **[copilot_readFile]** Read [](file:///e%3A/prog/python/LCARS_screen/main.py#349-349), lines 349 to 362
+The data rows are generated with 13 numbers per row. I need to reduce that to fewer numbers so they fit in the left ~47% of the header without overlapping the title. Also slightly bump the scale marker font. Two changes: 
+
+> **[copilot_multiReplaceString]** Used tool
+
+
+> **[copilot_multiReplaceString]** Replacing 5 lines with 5 lines in [](file:///e%3A/prog/python/LCARS_screen/main.py)
+
+```
+
+```
+- **Data rows**: 13 columns → 9 columns, so they stay within the left ~47% without reaching the title
+- **Scale markers** (`— 10` … `— 120`): font `8` → `9`, slightly more legible
+
