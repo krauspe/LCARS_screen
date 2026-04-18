@@ -619,7 +619,7 @@ class VoicePage(QWidget):
         )
         self.log.append(
             f'<span style="color:{LIGHT_BLUE}">'
-            f'  COMMANDS: NAVIGATION · ENGINEERING · TACTICAL · SYSTEM · VOICE · EXIT</span>'
+            f'  COMMANDS: NAVIGATION · ENGINEERING · TACTICAL · SYSTEM · WARPFIELD · VOICE · EXIT</span>'
         )
 
     def add_command(self, cmd):
@@ -856,6 +856,8 @@ class BootScreen(QWidget):
             self._change_page(2)
         elif "system" in cmd or "core" in cmd:
             self._change_page(1)
+        elif "warpfield" in cmd or "warp field" in cmd:
+            self._change_page(5)
         elif "warp" in cmd:
             self._change_page(5)
         elif "voice" in cmd:
