@@ -2,6 +2,7 @@ import sys
 import os
 import random
 import datetime
+import math
 import psutil
 import speech_recognition as sr
 from PySide6.QtWidgets import (
@@ -203,6 +204,459 @@ class NavPage(QWidget):
         sb.setValue(sb.maximum())
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  ENG-GRID SUPPLEMENTAL WIDGETS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class WarpCoreDiagram(QWidget):
+    """Animated M/ARA cross-section: concentric coil rings + rotating spokes."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(240, 200)
+        self._phase = 0.0
+        self._rotor = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self._timer.start(50)
+
+    def _step(self):
+        self._phase = (self._phase + 0.08) % (2 * math.pi)
+        self._rotor = (self._rotor + 2) % 360
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor(BG_BLACK))
+        w, h = self.width(), self.height()
+        cx, cy = w // 2, h // 2
+        ring_r = min(w // 2, h // 2) - 20
+
+        # --- EPS connector labels around outer ring ---
+        eps_labels = ["EPS-01", "EPS-02", "EPS-03", "EPS-04", "EPS-05", "EPS-06"]
+        p.setFont(QFont("Arial Narrow", 7))
+        p.setPen(QColor(LIGHT_BLUE))
+        for i, lbl in enumerate(eps_labels):
+            ang = math.radians(-90 + i * 60)
+            lx = int(cx + (ring_r + 14) * math.cos(ang)) - 14
+            ly = int(cy + (ring_r + 14) * math.sin(ang)) + 4
+            p.drawText(lx, ly, lbl)
+
+        # --- concentric rings ---
+        ring_specs = [
+            (ring_r,            TANGERINE,  2, 0.0),
+            (int(ring_r * 0.74), LILAC,     2, 0.5),
+            (int(ring_r * 0.52), GOLD,      2, 1.0),
+            (int(ring_r * 0.32), LIGHT_BLUE,2, 1.5),
+            (int(ring_r * 0.16), "#FF6644", 3, 2.0),
+        ]
+        for r, clr, lw, offset in ring_specs:
+            pulse = 0.35 + 0.65 * abs(math.sin(self._phase + offset))
+            c = QColor(clr)
+            c.setAlphaF(pulse)
+            p.setPen(QPen(c, lw))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+
+        # --- rotating spokes ---
+        inner_r = int(ring_r * 0.16)
+        spoke_r = int(ring_r * 0.52)
+        p.setPen(QPen(QColor(GOLD), 1))
+        for i in range(6):
+            ang = math.radians(self._rotor + i * 60)
+            p.drawLine(
+                cx + int(inner_r * math.cos(ang)), cy + int(inner_r * math.sin(ang)),
+                cx + int(spoke_r * math.cos(ang)), cy + int(spoke_r * math.sin(ang)),
+            )
+
+        # --- pulsing inner glow ---
+        pulse_c = 0.4 + 0.6 * abs(math.sin(self._phase * 2.5))
+        glow_r = int(inner_r * 2.2)
+        grad = QRadialGradient(cx, cy, glow_r)
+        cc = QColor(LIGHT_BLUE)
+        cc.setAlphaF(pulse_c)
+        grad.setColorAt(0.0, cc)
+        grad.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawEllipse(cx - glow_r, cy - glow_r, glow_r * 2, glow_r * 2)
+
+        # --- centre dot ---
+        p.setBrush(QBrush(QColor("#FF6644")))
+        p.drawEllipse(cx - 4, cy - 4, 8, 8)
+
+        # --- title ---
+        p.setFont(QFont("Arial Narrow", 8))
+        p.setPen(QColor(TANGERINE))
+        p.drawText(4, 14, "M/ARA CROSS-SECTION")
+        p.end()
+
+
+class VerticalWarpCoreDiagram(QWidget):
+    """Animated vertical warp core — TNG/VOY-style field-coil column."""
+    NUM_COILS = 9
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(240, 200)
+        self._phase = 0.0
+        self._pulse_pos = 0.0
+        self._pulse_dir = 1
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self._timer.start(50)
+
+    def _step(self):
+        self._phase = (self._phase + 0.06) % (2 * math.pi)
+        self._pulse_pos += self._pulse_dir * 0.018
+        if self._pulse_pos >= 1.0:
+            self._pulse_pos = 1.0
+            self._pulse_dir = -1
+        elif self._pulse_pos <= 0.0:
+            self._pulse_pos = 0.0
+            self._pulse_dir = 1
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor(BG_BLACK))
+        w, h = self.width(), self.height()
+        cx = w // 2
+        margin_top, margin_bot = 26, 22
+        col_hw = max(16, w // 7)
+        coil_extra = int(col_hw * 0.65)
+        core_top = margin_top
+        core_bot = h - margin_bot
+        core_h = core_bot - core_top
+        cy_mid = core_top + core_h // 2
+
+        # tube shell
+        tube_x = cx - col_hw
+        tube_w = col_hw * 2
+        p.setPen(QPen(QColor(TANGERINE), 2))
+        p.setBrush(QBrush(QColor("#040418")))
+        p.drawRoundedRect(tube_x, core_top, tube_w, core_h, 6, 6)
+
+        # plasma glow
+        glob_pulse = 0.5 + 0.5 * abs(math.sin(self._phase))
+        grad = QRadialGradient(cx, cy_mid, col_hw)
+        c1 = QColor("#00CCFF"); c1.setAlphaF(0.85 * glob_pulse)
+        c2 = QColor("#0033AA"); c2.setAlphaF(0.35)
+        c3 = QColor(0, 0, 0, 0)
+        grad.setColorAt(0.0, c1); grad.setColorAt(0.5, c2); grad.setColorAt(1.0, c3)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(grad))
+        p.drawRect(tube_x + 2, core_top + 2, tube_w - 4, core_h - 4)
+
+        # field coil bands
+        n, coil_h = self.NUM_COILS, 10
+        for i in range(n):
+            t = i / (n - 1)
+            y = int(core_top + t * (core_h - coil_h))
+            dist = abs(t - self._pulse_pos)
+            glow = max(0.0, 1.0 - dist * 4.0)
+            base = 0.3 + 0.2 * abs(math.sin(self._phase + t * math.pi * 2))
+            brightness = min(1.0, base + glow * 0.8)
+            coil_c = QColor("#00CCFF"); coil_c.setAlphaF(brightness)
+            cx1 = tube_x - coil_extra
+            cw  = tube_w + coil_extra * 2
+            p.setPen(QPen(coil_c, 2)); p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(cx1, y, cw, coil_h, 3, 3)
+            if brightness > 0.5:
+                fill_c = QColor("#004488"); fill_c.setAlphaF(brightness * 0.5)
+                p.setPen(Qt.NoPen); p.setBrush(fill_c)
+                p.drawRoundedRect(cx1 + 1, y + 1, cw - 2, coil_h - 2, 2, 2)
+            p.setFont(QFont("Arial Narrow", 7))
+            p.setPen(QColor(LIGHT_BLUE))
+            label = f"FC-{i+1:02d}"
+            if i % 2 == 0:
+                p.drawText(cx1 + cw + 4, y + 8, label)
+            else:
+                p.drawText(max(0, cx1 - 30), y + 8, label)
+
+        # travelling pulse highlight
+        py = int(core_top + self._pulse_pos * (core_h - 6))
+        pg = QRadialGradient(cx, py, col_hw * 2)
+        pc = QColor("#FFFFFF"); pc.setAlphaF(0.5)
+        pg.setColorAt(0.0, pc); pg.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setPen(Qt.NoPen); p.setBrush(QBrush(pg))
+        p.drawRect(cx - col_hw * 3, py - 3, col_hw * 6, 6)
+
+        # reaction chamber caps
+        p.setPen(Qt.NoPen); p.setBrush(QColor(TANGERINE))
+        p.drawRoundedRect(tube_x - 10, core_top - 9, tube_w + 20, 11, 3, 3)
+        p.drawRoundedRect(tube_x - 10, core_bot - 2, tube_w + 20, 11, 3, 3)
+
+        # labels
+        p.setFont(QFont("Arial Narrow", 8))
+        p.setPen(QColor(TANGERINE))
+        p.drawText(4, 14, "WARP CORE — VERTICAL")
+        p.setFont(QFont("Arial Narrow", 7)); p.setPen(QColor(GOLD))
+        p.drawText(cx - 16, core_top - 2, "M/ARA")
+        p.drawText(cx - 14, core_bot + 18, "D-RXN")
+        p.end()
+
+
+class NacelleFlowDiagram(QWidget):
+    """Top-down animated plasma-flow routing to port/starboard nacelles."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(240, 200)
+        self._phase = 0.0
+        self._flow = [65.0 + random.uniform(-5, 5) for _ in range(2)]
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self._timer.start(50)
+
+    def _step(self):
+        self._phase = (self._phase + 0.025) % 1.0
+        for i in range(2):
+            self._flow[i] = max(45.0, min(99.0,
+                self._flow[i] + random.uniform(-1.0, 1.0)))
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor(BG_BLACK))
+        w, h = self.width(), self.height()
+        cx = w // 2
+
+        nacel_w, nacel_h = max(52, int(w * 0.27)), 14
+        core_w, core_h   = 36, 28
+        core_x = cx - core_w // 2
+        core_y = h - 50
+
+        pn_x, pn_y = 6, 18
+        sn_x, sn_y = w - 6 - nacel_w, 18
+
+        # pylon endpoints (on the core and on each nacelle midpoint)
+        src_p  = (core_x,              core_y + core_h // 2)
+        src_s  = (core_x + core_w,     core_y + core_h // 2)
+        dst_p  = (pn_x + nacel_w,      pn_y + nacel_h // 2)
+        dst_s  = (sn_x,                sn_y + nacel_h // 2)
+
+        def draw_flow(x0, y0, x1, y1, phase_off):
+            lc = QColor(LIGHT_BLUE); lc.setAlphaF(0.25)
+            p.setPen(QPen(lc, 2)); p.setBrush(Qt.NoBrush)
+            p.drawLine(x0, y0, x1, y1)
+            n_dots = 9
+            for i in range(n_dots):
+                t = ((i / n_dots) + self._phase + phase_off) % 1.0
+                dx = x0 + (x1 - x0) * t
+                dy = y0 + (y1 - y0) * t
+                alpha = math.sin(t * math.pi)
+                dc = QColor("#00FFFF"); dc.setAlphaF(alpha * 0.85)
+                p.setPen(Qt.NoPen); p.setBrush(dc)
+                p.drawEllipse(int(dx) - 3, int(dy) - 3, 6, 6)
+
+        draw_flow(*src_p, *dst_p, 0.0)
+        draw_flow(*src_s, *dst_s, 0.5)
+
+        # secondary hull outline
+        hull_x = cx - 22
+        hull_y = core_y - 18
+        hull_w, hull_h = 44, core_h + 20
+        p.setPen(QPen(QColor(TANGERINE), 1)); p.setBrush(QBrush(QColor("#0d0500")))
+        p.drawRoundedRect(hull_x, hull_y, hull_w, hull_h + 2, 5, 5)
+
+        # engineering core block
+        p.setPen(QPen(QColor(TANGERINE), 2)); p.setBrush(QBrush(QColor("#1A0800")))
+        p.drawRoundedRect(core_x, core_y, core_w, core_h, 4, 4)
+
+        # core glow pulse
+        gp = 0.4 + 0.4 * abs(math.sin(self._phase * 2 * math.pi * 2))
+        for r, al in [(14, gp * 0.45), (7, gp * 0.85)]:
+            gc = QColor(TANGERINE); gc.setAlphaF(al)
+            p.setPen(Qt.NoPen); p.setBrush(gc)
+            p.drawEllipse(core_x + core_w//2 - r, core_y + core_h//2 - r, r*2, r*2)
+
+        p.setFont(QFont("Arial Narrow", 7)); p.setPen(QColor(GOLD))
+        p.drawText(core_x + 2, core_y + core_h//2 + 4, "M/ARA")
+
+        # port nacelle
+        p.setPen(QPen(QColor(LILAC), 2)); p.setBrush(QBrush(QColor("#110022")))
+        p.drawRoundedRect(pn_x, pn_y, nacel_w, nacel_h, 4, 4)
+        p.setPen(QColor(LILAC))
+        p.drawText(pn_x + 3, pn_y + 10, f"PORT  {self._flow[0]:.0f}%")
+
+        # starboard nacelle
+        p.setPen(QPen(QColor(GOLD), 2)); p.setBrush(QBrush(QColor("#201000")))
+        p.drawRoundedRect(sn_x, sn_y, nacel_w, nacel_h, 4, 4)
+        p.setPen(QColor(GOLD))
+        p.drawText(sn_x + 3, sn_y + 10, f"STBD  {self._flow[1]:.0f}%")
+
+        # flow rate readout labels at bottom
+        p.setFont(QFont("Arial Narrow", 7)); p.setPen(QColor(LIGHT_BLUE))
+        p.drawText(4, h - 5, f"PORT: {self._flow[0]:.1f} GW/s")
+        p.drawText(w - 80, h - 5, f"STBD: {self._flow[1]:.1f} GW/s")
+
+        # title
+        p.setFont(QFont("Arial Narrow", 8)); p.setPen(QColor(TANGERINE))
+        p.drawText(4, 14, "NACELLE PLASMA FLOW")
+        p.end()
+
+
+class EngDiagramStack(QWidget):
+    """Cycles through warp-core diagram views every 10 seconds."""
+    _LABELS = [
+        "VIEW: M/ARA CROSS-SECTION",
+        "VIEW: WARP CORE — VERTICAL",
+        "VIEW: NACELLE PLASMA FLOW",
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+
+        self._stack = QStackedWidget()
+        self._stack.addWidget(WarpCoreDiagram())
+        self._stack.addWidget(VerticalWarpCoreDiagram())
+        self._stack.addWidget(NacelleFlowDiagram())
+        layout.addWidget(self._stack)
+
+        self._lbl = QLabel(self._LABELS[0])
+        self._lbl.setAlignment(Qt.AlignCenter)
+        self._lbl.setFixedHeight(16)
+        self._lbl.setStyleSheet(
+            f"color:{LILAC}; font-family:'Arial Narrow'; font-size:9px;"
+        )
+        layout.addWidget(self._lbl)
+
+        self._idx = 0
+        self._cycle = QTimer(self)
+        self._cycle.timeout.connect(self._next)
+        self._cycle.start(10000)
+
+    def _next(self):
+        self._idx = (self._idx + 1) % self._stack.count()
+        self._stack.setCurrentIndex(self._idx)
+        self._lbl.setText(self._LABELS[self._idx])
+
+
+class EngTelemetryFeed(QWidget):
+    """Scrolling engineering subsystem telemetry readout."""
+    _SYSTEMS = [
+        ("M/AM INJECTOR-α", TANGERINE),
+        ("M/AM INJECTOR-β", TANGERINE),
+        ("PLASMA CONDUIT A", LILAC),
+        ("PLASMA CONDUIT B", LILAC),
+        ("EPS RELAY   A-04", LIGHT_BLUE),
+        ("WARP COIL   PRI ", GOLD),
+        ("WARP COIL   SEC ", GOLD),
+        ("FIELD STAB  UNIT", "#66FF66"),
+        ("ANTIMATTER  POD ", TANGERINE),
+        ("BUSSARD SCOOP   ", LIGHT_BLUE),
+        ("INJECTOR RAIL-01", LILAC),
+        ("PLASMA MANIFOLD ", GOLD),
+        ("POWER RELAY  B-2", LIGHT_BLUE),
+    ]
+    _UNITS = ["GW", "TJ/s", "m³/s", "μT", "kPa", "MW", "PJ", "mT/s"]
+    _STATUS = (
+        ["NOMINAL"] * 5 + ["STABLE"] * 3 + ["OPTIMAL"] * 2 + ["CAUTION"]
+    )
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+
+        hdr = QLabel("SUBSYSTEM TELEMETRY")
+        hdr.setStyleSheet(
+            f"color:{GOLD}; font-family:'Arial Narrow'; font-size:22px; font-weight:bold;"
+        )
+        layout.addWidget(hdr)
+
+        self.feed = QTextEdit()
+        self.feed.setReadOnly(True)
+        self.feed.setFrameStyle(QFrame.NoFrame)
+        self.feed.setStyleSheet(f"""
+            QTextEdit {{
+                background-color:{BG_BLACK}; color:{LIGHT_BLUE};
+                font-family:'Courier New'; font-size:22px;
+                border:1px solid {LILAC}; border-radius:4px;
+            }}
+            QScrollBar:vertical {{ width:0px; }}
+        """)
+        layout.addWidget(self.feed)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(700)
+
+    def _tick(self):
+        name, color = random.choice(self._SYSTEMS)
+        val   = random.uniform(0.001, 9.999)
+        unit  = random.choice(self._UNITS)
+        stat  = random.choice(self._STATUS)
+        sc    = "#66FF66" if stat in ("NOMINAL", "STABLE", "OPTIMAL") else "#FFCC00"
+        ts    = datetime.datetime.now().strftime("%H:%M:%S")
+        self.feed.append(
+            f'<span style="color:#555">{ts}</span> '
+            f'<span style="color:{color}">{name}</span> '
+            f'<span style="color:#aaa">{val:6.3f} {unit}</span> '
+            f'<span style="color:{sc}">[{stat}]</span>'
+        )
+        sb = self.feed.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+
+class EngSystemStatus(QWidget):
+    """Bottom row of blinking LCARS status dots for major engine systems."""
+    _ITEMS = [
+        ("ANTIMATTER", TANGERINE),
+        ("PLASMA GEN", LILAC),
+        ("WARP COILS", GOLD),
+        ("FIELD STAB", LIGHT_BLUE),
+        ("EPS RELAYS", TANGERINE),
+        ("M/AM INJ-A", LILAC),
+        ("M/AM INJ-B", GOLD),
+        ("BUSSARD   ", LIGHT_BLUE),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(52)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self._lights = []
+        for label, color in self._ITEMS:
+            col = QVBoxLayout()
+            col.setSpacing(1)
+            lbl = QLabel(label.strip())
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet(
+                f"color:{color}; font-family:'Arial Narrow'; font-size:9px;"
+            )
+            dot = QLabel("●")
+            dot.setAlignment(Qt.AlignCenter)
+            dot.setStyleSheet(
+                f"color:{color}; font-family:'Arial Narrow'; font-size:18px;"
+            )
+            self._lights.append((dot, color))
+            col.addWidget(lbl)
+            col.addWidget(dot)
+            layout.addLayout(col)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._pulse)
+        self._timer.start(550)
+
+    def _pulse(self):
+        dot, color = random.choice(self._lights)
+        dot.setStyleSheet("color:white; font-family:'Arial Narrow'; font-size:18px;")
+        QTimer.singleShot(130, lambda: dot.setStyleSheet(
+            f"color:{color}; font-family:'Arial Narrow'; font-size:18px;"
+        ))
+
+
 class EngPage(QWidget):
     """System monitoring — CPU, memory, simulated plasma conduit (from main.py)."""
     def __init__(self):
@@ -242,7 +696,19 @@ class EngPage(QWidget):
         self.cpu_bar  = make_bar("WARP CORE OUTPUT   (CPU)", LILAC)
         self.mem_bar  = make_bar("DEUTERIUM RESERVE  (MEM)", TANGERINE)
         self.warp_bar = make_bar("PLASMA CONDUIT     (SIM)", GOLD)
-        layout.addStretch()
+
+        # ── animated engineering content ──────────────────────────────────
+        mid_row = QHBoxLayout()
+        mid_row.setSpacing(8)
+
+        self._core_diagram = EngDiagramStack()
+        mid_row.addWidget(self._core_diagram, stretch=1)
+
+        self._telemetry = EngTelemetryFeed()
+        mid_row.addWidget(self._telemetry, stretch=1)
+
+        layout.addLayout(mid_row)
+        layout.addWidget(EngSystemStatus())
 
         self._warp_val = 50
         self._warp_dir = 1
