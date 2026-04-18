@@ -127,12 +127,20 @@ class VoiceWorker(QThread):
     command_received = Signal(str)
     error_occurred   = Signal(str)
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._running = False
+
+    def stop(self):
+        self._running = False
+
     def run(self):
+        self._running = True
         recognizer = sr.Recognizer()
         try:
             with sr.Microphone() as source:
                 recognizer.adjust_for_ambient_noise(source, duration=1)
-                while True:
+                while self._running:
                     try:
                         audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
                         text  = recognizer.recognize_google(audio).lower()
@@ -614,7 +622,9 @@ class BootScreen(QWidget):
             )
 
     def _safe_exit(self):
+        self._voice_worker.stop()
         self._voice_worker.quit()
+        self._voice_worker.wait(6000)
         self.window().close()
 
     def keyPressEvent(self, event):
@@ -650,6 +660,14 @@ class LcarsApp(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self._screen = BootScreen(player)
         layout.addWidget(self._screen)
+
+    def closeEvent(self, event):
+        worker = self._screen.findChild(VoiceWorker)
+        if worker and worker.isRunning():
+            worker.stop()
+            worker.quit()
+            worker.wait(6000)
+        super().closeEvent(event)
 
 
 if __name__ == "__main__":
