@@ -1032,35 +1032,359 @@ class EngPage(QWidget):
         self.warp_bar.setValue(self._warp_val)
 
 
+class TacConsoleWidget(QWidget):
+    """Animated LCARS Weapon System 06-0722 — photon torpedo bay.
+    Cycles between rack view (7 torpedoes with individual fire animations)
+    and cutaway diagram view with gold leader-line callouts.
+    """
+
+    _N_TORPS = 7
+
+    _SIDEBAR_ITEMS = [
+        ("LCARS ACCESS",      GOLD,       True),
+        ("KEY SYSTEMS",       LIGHT_BLUE, False),
+        ("WEAPONS SYSTEMS",   LIGHT_BLUE, False),
+        ("SCIENCE-01",        LIGHT_BLUE, False),
+        ("SCAN",              LIGHT_BLUE, False),
+        ("DEFENSIVE SYSTEMS", LIGHT_BLUE, False),
+        ("EMITTERS",          LIGHT_BLUE, False),
+        ("OPS MANAGEMENT",    LIGHT_BLUE, False),
+        ("COMMUNICATIONS",    LIGHT_BLUE, False),
+        ("LOCK",              GOLD,       True),
+        ("MODE SELECT",       LIGHT_BLUE, False),
+    ]
+
+    _PILL_BTNS = [
+        ("TARGET SCAN",  LIGHT_BLUE),
+        ("RESET",        TANGERINE),
+        ("EXIT",         "#CC7722"),
+        ("ALERT",        LIGHT_BLUE),
+        ("DATA RESEARCH","#BB6611"),
+        ("LCARS-19720",  LIGHT_BLUE),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._phase     = 0.0
+        self._fire      = [0.0] * self._N_TORPS
+        self._fire_cd   = 60
+        self._view_mode = 0    # 0=rack  1=cutaway
+        self._view_t    = 0
+        self._act_btn   = 0
+        self._rows      = []
+        self._row_t     = 0
+        rng = random.Random(17)
+        for _ in range(9):
+            self._rows.append(self._gen_row(rng))
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self._timer.start(50)
+
+    @staticmethod
+    def _gen_row(rng=None):
+        r = rng or random
+        return "  ".join(str(r.randint(10, 9999999)) for _ in range(r.randint(7, 11)))
+
+    def _step(self):
+        self._phase    = (self._phase + 0.05) % (2 * math.pi)
+        self._view_t  += 1
+        self._row_t   += 1
+        self._fire_cd -= 1
+
+        if self._view_t >= 240:
+            self._view_t    = 0
+            self._view_mode = 1 - self._view_mode
+            if self._view_mode == 0:
+                self._act_btn = random.randint(0, len(self._PILL_BTNS) - 1)
+
+        if self._row_t >= 6:
+            self._row_t = 0
+            self._rows.append(self._gen_row())
+            if len(self._rows) > 14:
+                self._rows.pop(0)
+
+        for i in range(self._N_TORPS):
+            if self._fire[i] > 0:
+                self._fire[i] = min(1.0, self._fire[i] + 0.022)
+                if self._fire[i] >= 1.0:
+                    self._fire[i] = 0.0
+
+        if self._fire_cd <= 0 and self._view_mode == 0:
+            idle = [i for i, s in enumerate(self._fire) if s == 0.0]
+            if idle:
+                self._fire[random.choice(idle)] = 0.01
+            self._fire_cd = random.randint(45, 110)
+
+        self.update()
+
+    # ── paint entry point ─────────────────────────────────────────────────────
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor(BG_BLACK))
+        W, H  = self.width(), self.height()
+        sbw   = max(128, min(162, int(W * 0.135)))
+        hdr_h = max(88,  int(H * 0.27))
+        sep_h = max(22,  int(H * 0.06))
+        self._p_sidebar(p, 0, 0, sbw, H)
+        self._p_header(p, sbw, 0, W - sbw, hdr_h)
+        self._p_statusbar(p, sbw, hdr_h, W - sbw, sep_h)
+        bay_y = hdr_h + sep_h
+        self._p_bay(p, sbw, bay_y, W - sbw, H - bay_y)
+        p.end()
+
+    # ── sidebar ───────────────────────────────────────────────────────────────
+
+    def _p_sidebar(self, p, x, y, w, h):
+        p.fillRect(x, y, w, h, QColor(BG_BLACK))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(LIGHT_BLUE))
+        p.drawRect(x, y, 16, h)
+        pad = 3
+        ih  = max(22, (h - 4) // len(self._SIDEBAR_ITEMS) - pad)
+        p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+        for i, (lbl, color, active) in enumerate(self._SIDEBAR_ITEMS):
+            iy = y + 2 + i * (ih + pad)
+            ix = x + 19
+            iw = w - 22
+            bc = QColor(color)
+            if not active:
+                bc.setAlpha(195)
+            p.setPen(Qt.NoPen)
+            p.setBrush(bc)
+            p.drawRoundedRect(ix, iy, iw, ih, ih // 2, ih // 2)
+            p.setPen(QColor(BG_BLACK))
+            p.drawText(ix + 6, iy + ih - 6, lbl)
+
+    # ── header ────────────────────────────────────────────────────────────────
+
+    def _p_header(self, p, x, y, w, h):
+        p.fillRect(x, y, w, h, QColor(5, 5, 16))
+        dw  = int(w * 0.50)
+        rx  = x + dw
+
+        p.setFont(QFont("Courier New", 8))
+        p.setPen(QColor(LIGHT_BLUE))
+        lh  = 13
+        vis = min(len(self._rows), h // lh)
+        for i in range(vis):
+            p.drawText(x + 5, y + 11 + i * lh, self._rows[-(vis - i)])
+
+        p.setFont(QFont("Arial Narrow", max(10, int(h * 0.17)), QFont.Bold))
+        p.setPen(QColor("#FFFFFF"))
+        p.drawText(rx + 5, y + int(h * 0.21), "WEAPON SYSTEM 06-0722")
+        p.setFont(QFont("Arial Narrow", max(8, int(h * 0.12)), QFont.Bold))
+        p.setPen(QColor(LIGHT_BLUE))
+        p.drawText(rx + 5, y + int(h * 0.36), "EQUIPMENT AND TECHNOLOGY 68-3")
+
+        ba_y      = y + int(h * 0.41)
+        ba_h      = h - int(h * 0.41) - 4
+        cols, rows = 3, 2
+        pad        = 4
+        bw         = (w - dw - pad * (cols + 1)) // cols
+        bh         = max(20, (ba_h - pad * (rows + 1)) // rows)
+        for idx, (lbl, col) in enumerate(self._PILL_BTNS):
+            c   = idx % cols
+            r   = idx // cols
+            bx  = rx + pad + c * (bw + pad)
+            _by = ba_y + pad + r * (bh + pad)
+            bc  = QColor(col)
+            if idx == self._act_btn:
+                fl  = (math.sin(self._phase * 4) + 1) / 2
+                bc  = bc.lighter(int(100 + 55 * fl))
+            p.setPen(Qt.NoPen)
+            p.setBrush(bc)
+            p.drawRoundedRect(bx, _by, bw, bh, bh // 2, bh // 2)
+            p.setPen(QColor(BG_BLACK))
+            p.setFont(QFont("Arial Narrow", 7, QFont.Bold))
+            p.drawText(bx + 6, _by + bh - 7, lbl)
+
+    # ── status bar strip ──────────────────────────────────────────────────────
+
+    def _p_statusbar(self, p, x, y, w, h):
+        p.fillRect(x, y, w, h, QColor(4, 4, 14))
+        half = w // 2
+        for i, lbl in enumerate(["TRACTOR BEAM", "NETWORK"]):
+            by   = y + 2 + i * (h // 2 - 1)
+            barw = half // 2 - 4
+            fill = int(barw * (0.55 + 0.30 * math.sin(self._phase + i)))
+            p.setPen(QPen(QColor(LIGHT_BLUE), 1))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(x + 2, by + 2, barw, h // 2 - 6)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(LIGHT_BLUE))
+            p.drawRect(x + 2, by + 2, fill, h // 2 - 6)
+            p.setPen(QColor(LIGHT_BLUE))
+            p.setFont(QFont("Arial Narrow", 7))
+            p.drawText(x + barw + 8, by + h // 2 - 4, lbl)
+        rlbls = [
+            ("SUBSPACE SYSTEMS",         LIGHT_BLUE),
+            ("PHOTON/QUANTUM TORPEDOES", TANGERINE),
+            ("PROPULSION SYSTEMS",       LIGHT_BLUE),
+            ("SYSTEM LOCATIONS",         LIGHT_BLUE),
+        ]
+        rh2 = h // 2 - 2
+        for i, (lbl, col) in enumerate(rlbls):
+            ci   = i % 2
+            ri   = i // 2
+            _by  = y + 2 + ri * rh2
+            _bx  = x + half + ci * (half // 2)
+            bw2  = half // 2 - 68
+            fill = int(bw2 * (0.6 + 0.28 * math.sin(self._phase * 0.9 + i * 0.7)))
+            fc   = QColor(col)
+            p.setPen(QPen(fc, 1))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(_bx + 66, _by + 2, bw2, rh2 - 4)
+            p.setPen(Qt.NoPen)
+            p.setBrush(fc)
+            p.drawRect(_bx + 66, _by + 2, fill, rh2 - 4)
+            p.setPen(QColor(LIGHT_BLUE))
+            p.setFont(QFont("Arial Narrow", 6))
+            p.drawText(_bx + 2, _by + rh2 - 3, lbl)
+
+    # ── torpedo bay ───────────────────────────────────────────────────────────
+
+    def _p_bay(self, p, x, y, w, h):
+        if self._view_mode == 1:
+            self._p_cutaway(p, x, y, w, h)
+        else:
+            self._p_rack(p, x, y, w, h)
+        p.setPen(QColor(LIGHT_BLUE))
+        p.setFont(QFont("Arial Narrow", 15, QFont.Bold))
+        p.drawText(x + 10, y + h - 8, "PHOTON TORPEDO Mk-V")
+
+    # ── rack view ─────────────────────────────────────────────────────────────
+
+    def _p_rack(self, p, x, y, w, h):
+        slot = (h - 28) // self._N_TORPS
+        tw   = int(w * 0.58)
+        tx   = x + int(w * 0.16)
+        for i in range(self._N_TORPS):
+            th   = max(18, slot - 10)
+            ty   = y + 4 + i * slot + (slot - th) // 2
+            fs   = self._fire[i]
+            off  = int(fs * w * 0.38)
+            alph = max(0, int(255 * (1.0 - fs * 1.45)))
+            puls = 0.82 + 0.18 * math.sin(self._phase * 1.6 + i * 0.65) if fs == 0 else 1.0
+            self._p_torp(p, tx + off, ty, tw, th, alph, puls, fs > 0)
+
+    # ── single torpedo ────────────────────────────────────────────────────────
+
+    def _p_torp(self, p, x, y, w, h, alpha=255, pulse=1.0, firing=False):
+        """Dark capsule body + red stripe + blinking indicator dot + nose glow."""
+        cy = y + h // 2
+        # Body
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(int(52 * pulse), int(52 * pulse), int(58 * pulse), alpha))
+        p.drawRoundedRect(x, y, w, h, h // 2, h // 2)
+        # Rim
+        p.setPen(QPen(QColor(int(90 * pulse), int(90 * pulse), int(100 * pulse), alpha), 1))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(x, y, w, h, h // 2, h // 2)
+        # Red accent stripe
+        sx  = x + h // 2
+        sw  = max(1, w - h)
+        sh  = max(2, h // 5)
+        sc  = QColor(255 if firing else 200, 28 if firing else 18, 0, alpha)
+        p.setPen(Qt.NoPen)
+        p.setBrush(sc)
+        p.drawRect(sx, cy - sh // 2, sw, sh)
+        if firing:
+            gc = QColor(255, 80, 0, int(alpha * 0.35))
+            p.setBrush(gc)
+            p.drawRect(sx - 3, cy - sh - 2, sw + 6, sh * 2 + 4)
+        # Indicator dot
+        dr    = max(3, h // 5)
+        dx    = x + w - h // 2 - 4
+        blink = int(alpha * (0.45 + 0.55 * abs(math.sin(self._phase * 3.5))))
+        dc    = QColor(255, 160, 0, blink) if firing else QColor(200, 20, 20, blink)
+        p.setPen(Qt.NoPen)
+        p.setBrush(dc)
+        p.drawEllipse(dx - dr, cy - dr, dr * 2, dr * 2)
+        # Nose radial highlight
+        ng = QRadialGradient(x + h // 2, cy, h // 2)
+        ng.setColorAt(0.0, QColor(130, 130, 140, int(alpha * 0.55)))
+        ng.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setBrush(QBrush(ng))
+        p.drawEllipse(x, y, h, h)
+
+    # ── cutaway view ──────────────────────────────────────────────────────────
+
+    def _p_cutaway(self, p, x, y, w, h):
+        """Large single torpedo with gold leader-line callouts."""
+        tw = int(w * 0.70)
+        th = max(55, int(h * 0.30))
+        tx = x + int(w * 0.12)
+        ty = y + int(h * 0.32)
+        self._p_torp(p, tx, ty, tw, th, 255, 1.0, False)
+
+        # Interior section dividers
+        p.setPen(QPen(QColor(72, 72, 84), 1))
+        for frac in [0.22, 0.48, 0.72]:
+            lx = int(tx + th // 2 + frac * (tw - th))
+            p.drawLine(lx, ty + 3, lx, ty + th - 3)
+
+        # Pulsing outer glow
+        pulse = 0.22 + 0.16 * math.sin(self._phase * 2)
+        grd   = QRadialGradient(tx + tw // 2, ty + th // 2, max(tw, th) // 2 + 30)
+        gc    = QColor(200, 50, 50)
+        gc.setAlphaF(pulse)
+        grd.setColorAt(0.0, QColor(0, 0, 0, 0))
+        grd.setColorAt(0.7, QColor(0, 0, 0, 0))
+        grd.setColorAt(1.0, gc)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(grd))
+        p.drawEllipse(tx - 30, ty - 30, tw + 60, th + 60)
+
+        # Gold callout leader lines
+        gold       = QColor(GOLD)
+        body_start = tx + th // 2
+        body_len   = tw - th
+        lbl_y_top  = ty - max(16, int(h * 0.15))
+        lbl_y_bot  = ty + th + max(12, int(h * 0.10))
+
+        for lbl, frac in [
+            ("SUSTAINER ENGINE MODULES", 0.13),
+            ("DEUTERIUM SUPPLY",         0.47),
+            ("ANTIMATTER SUPPLY",        0.76),
+        ]:
+            ax = int(body_start + frac * body_len)
+            p.setPen(QPen(gold, 1))
+            p.drawLine(ax, ty, ax, lbl_y_top + 6)
+            p.drawLine(ax, lbl_y_top + 6, ax + 5, lbl_y_top + 6)
+            p.setPen(Qt.NoPen)
+            p.setBrush(gold)
+            p.drawEllipse(ax - 3, ty - 3, 6, 6)
+            p.setPen(gold)
+            p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+            p.drawText(ax + 8, lbl_y_top + 10, lbl)
+
+        for lbl, frac in [
+            ("REACTION CHAMBERS",   0.37),
+            ("GUIDANCE PROCESSORS", 0.63),
+        ]:
+            ax = int(body_start + frac * body_len)
+            p.setPen(QPen(gold, 1))
+            p.drawLine(ax, ty + th, ax, lbl_y_bot - 5)
+            p.drawLine(ax, lbl_y_bot - 5, ax + 5, lbl_y_bot - 5)
+            p.setPen(Qt.NoPen)
+            p.setBrush(gold)
+            p.drawEllipse(ax - 3, ty + th - 3, 6, 6)
+            p.setPen(gold)
+            p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+            p.drawText(ax + 8, lbl_y_bot, lbl)
+
+
 class TacPage(QWidget):
-    """Sound-enabled 4×4 tactical keypad (from main5.py)."""
+    """Animated LCARS tactical weapons console — Photon Torpedo Mk-V."""
     def __init__(self, player):
         super().__init__()
         layout = QVBoxLayout(self)
-
-        header = QLabel("TACTICAL CONSOLE  —  WEAPONS ARRAY")
-        header.setStyleSheet(
-            f"color: {GOLD}; font-size: 20px; font-family: 'Arial Narrow'; font-weight: bold;"
-        )
-        header.setAlignment(Qt.AlignRight)
-        layout.addWidget(header)
-
-        grid_widget = QWidget()
-        grid = QGridLayout(grid_widget)
-        grid.setSpacing(6)
-
-        colors = [TANGERINE, LILAC, LIGHT_BLUE, GOLD]
-        for row in range(4):
-            for col in range(4):
-                btn = LcarsKey(
-                    str(random.randint(100, 999)),
-                    colors[row % len(colors)],
-                    player
-                )
-                grid.addWidget(btn, row, col)
-
-        layout.addWidget(grid_widget, alignment=Qt.AlignCenter)
-        layout.addStretch()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self._console = TacConsoleWidget()
+        layout.addWidget(self._console)
 
 
 class SysPage(QWidget):
