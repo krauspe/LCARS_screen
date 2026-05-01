@@ -158,11 +158,308 @@ class VoiceWorker(QThread):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+#  STELLAR NAVIGATION CHART
+# ═════════════════════════════════════════════════════════════════════════════
+
+class StellarChartWidget(QWidget):
+    """Animated stellar navigation chart: stars, planets, galaxies, starbases,
+    nebulae, wormholes, trajectories with travelling blips, and flashing points."""
+
+    _CATALOG = [
+        # Stars
+        {"type": "star",     "name": "ALGOL-7",    "nx": 0.15, "ny": 0.20, "drift": 0.0, "color": "#FFFFFF", "size": 5},
+        {"type": "star",     "name": "VEGA-III",   "nx": 0.72, "ny": 0.14, "drift": 0.3, "color": "#FFFFAA", "size": 4},
+        {"type": "star",     "name": "RIGEL-II",   "nx": 0.55, "ny": 0.68, "drift": 0.0, "color": "#FFDDAA", "size": 6},
+        {"type": "star",     "name": "SIRIUS-A",   "nx": 0.85, "ny": 0.42, "drift": 0.2, "color": "#AACCFF", "size": 3},
+        {"type": "star",     "name": "PROXIMA",    "nx": 0.30, "ny": 0.78, "drift": 0.0, "color": "#FFBB88", "size": 4},
+        # Planets
+        {"type": "planet",   "name": "KAITOS-IV",  "nx": 0.25, "ny": 0.35, "drift": 0.5, "color": "#3399FF", "size": 10},
+        {"type": "planet",   "name": "MIRA-II",    "nx": 0.62, "ny": 0.55, "drift": 0.0, "color": "#66CC44", "size": 12},
+        {"type": "planet",   "name": "DELPHI-IX",  "nx": 0.45, "ny": 0.22, "drift": 0.4, "color": "#CC4422", "size":  8},
+        {"type": "planet",   "name": "ORIN-V",     "nx": 0.78, "ny": 0.75, "drift": 0.0, "color": "#AA8833", "size": 11},
+        {"type": "planet",   "name": "LUXOR-I",    "nx": 0.10, "ny": 0.60, "drift": 0.6, "color": "#33BBAA", "size":  9},
+        # Galaxies
+        {"type": "galaxy",   "name": "M-31",       "nx": 0.90, "ny": 0.20, "drift": 0.0, "color": "#CC66FF", "size": 22},
+        {"type": "galaxy",   "name": "NGC-7293",   "nx": 0.18, "ny": 0.88, "drift": 0.0, "color": "#FF99CC", "size": 18},
+        # Starbases
+        {"type": "starbase", "name": "SB-11",      "nx": 0.50, "ny": 0.45, "drift": 0.0, "color": "#FFCC00", "size": 13},
+        {"type": "starbase", "name": "DS-39",      "nx": 0.38, "ny": 0.12, "drift": 0.0, "color": "#00FFFF", "size": 11},
+        # Nebulae (rendered first, underneath all)
+        {"type": "nebula",   "name": "CYGNUS-NEB", "nx": 0.65, "ny": 0.30, "drift": 0.0, "color": "#8833CC", "size": 45},
+        {"type": "nebula",   "name": "LYRA-RIFT",  "nx": 0.20, "ny": 0.55, "drift": 0.0, "color": "#003388", "size": 38},
+        # Wormhole
+        {"type": "wormhole", "name": "WH-ALPHA",   "nx": 0.82, "ny": 0.58, "drift": 0.0, "color": "#FF00FF", "size": 16},
+    ]
+
+    # Quadratic bezier trajectories: (nx0,ny0, ctrl_nx,ctrl_ny, nx1,ny1, label, color)
+    _TRAJECTORIES = [
+        (0.50, 0.45, 0.40, 0.30, 0.25, 0.35, "COURSE-α", TANGERINE),
+        (0.38, 0.12, 0.55, 0.25, 0.62, 0.55, "TRJ-07",   LILAC),
+        (0.82, 0.58, 0.78, 0.68, 0.78, 0.75, "TRJ-12",   LIGHT_BLUE),
+        (0.10, 0.60, 0.30, 0.65, 0.50, 0.45, "ROUTE-Σ",  TANGERINE),
+        (0.15, 0.20, 0.25, 0.10, 0.38, 0.12, "VEC-03",   LILAC),
+    ]
+
+    _N_FLASH = 18
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(300, 300)
+        self._phase = 0.0
+
+        # Seeded RNG for stable initial positions
+        rng = random.Random(42)
+        self._flash_pts = []
+        for _ in range(self._N_FLASH):
+            self._flash_pts.append({
+                "nx":        rng.uniform(0.03, 0.97),
+                "ny":        rng.uniform(0.03, 0.97),
+                "phase":     rng.uniform(0, 2 * math.pi),
+                "speed":     rng.uniform(1.5, 4.0),
+                "hue":       rng.uniform(0, 360),
+                "hue_drift": rng.uniform(0.5, 2.0) * rng.choice([-1, 1]),
+                "jump_cd":   rng.randint(8, 24),
+                "jump_t":    0,
+            })
+
+        # Blip positions along each trajectory (staggered starts)
+        n = len(self._TRAJECTORIES)
+        self._blip_t     = [i / n for i in range(n)]
+        self._blip_speed = [0.0030, 0.0025, 0.0040, 0.0028, 0.0035]
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._step)
+        self._timer.start(50)
+
+    def _step(self):
+        self._phase = (self._phase + 0.06) % (2 * math.pi)
+
+        for i in range(len(self._blip_t)):
+            self._blip_t[i] = (self._blip_t[i] + self._blip_speed[i]) % 1.0
+
+        for fp in self._flash_pts:
+            fp["hue"] = (fp["hue"] + fp["hue_drift"]) % 360
+            fp["jump_t"] += 1
+            if fp["jump_t"] >= fp["jump_cd"]:
+                fp["hue"]       = random.uniform(0, 360)
+                fp["hue_drift"] = random.uniform(0.5, 3.0) * random.choice([-1, 1])
+                fp["jump_cd"]   = random.randint(8, 30)
+                fp["jump_t"]    = 0
+
+        self.update()
+
+    def _map(self, nx, ny, margin=14):
+        """Map normalised [0,1] → widget pixel coords respecting margin."""
+        w = self.width()  - margin * 2
+        h = self.height() - margin * 2
+        return margin + nx * w, margin + ny * h
+
+    @staticmethod
+    def _bezier(t, p0, ctrl, p1):
+        x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * ctrl[0] + t ** 2 * p1[0]
+        y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * ctrl[1] + t ** 2 * p1[1]
+        return x, y
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.fillRect(self.rect(), QColor(BG_BLACK))
+
+        margin = 14
+        W, H   = self.width(), self.height()
+
+        # ── Grid overlay ──────────────────────────────────────────────────────
+        gc = QColor(LIGHT_BLUE)
+        gc.setAlpha(25)
+        p.setPen(QPen(gc, 1))
+        step = 72
+        x = margin
+        while x < W - margin:
+            p.drawLine(int(x), margin, int(x), H - margin)
+            x += step
+        y = margin
+        while y < H - margin:
+            p.drawLine(margin, int(y), W - margin, int(y))
+            y += step
+
+        # Sector corner labels
+        p.setFont(QFont("Arial Narrow", 7))
+        lc = QColor(LIGHT_BLUE)
+        lc.setAlpha(80)
+        p.setPen(lc)
+        p.drawText(margin + 3,  margin + 11, "ALPHA-IV")
+        p.drawText(W - margin - 60, margin + 11, "BETA-VII")
+        p.drawText(margin + 3,  H - margin - 4, "GAMMA-II")
+        p.drawText(W - margin - 60, H - margin - 4, "DELTA-IX")
+
+        # ── Border ────────────────────────────────────────────────────────────
+        p.setPen(QPen(QColor(TANGERINE), 1))
+        p.setBrush(Qt.NoBrush)
+        p.drawRect(margin, margin, W - margin * 2, H - margin * 2)
+
+        # ── Nebulae (bottom layer) ─────────────────────────────────────────────
+        for obj in self._CATALOG:
+            if obj["type"] != "nebula":
+                continue
+            ox, oy = self._map(obj["nx"], obj["ny"], margin)
+            sz = obj["size"]
+            grad = QRadialGradient(ox, oy, sz)
+            c0 = QColor(obj["color"]); c0.setAlpha(55)
+            c1 = QColor(obj["color"]); c1.setAlpha(0)
+            grad.setColorAt(0.0, c0)
+            grad.setColorAt(1.0, c1)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(grad))
+            p.drawEllipse(int(ox - sz), int(oy - sz), sz * 2, sz * 2)
+
+        # ── Trajectories ──────────────────────────────────────────────────────
+        dash_pen = QPen()
+        dash_pen.setWidth(1)
+        dash_pen.setStyle(Qt.DashLine)
+
+        for i, (nx0, ny0, ncx, ncy, nx1, ny1, label, col) in enumerate(self._TRAJECTORIES):
+            x0, y0 = self._map(nx0, ny0, margin)
+            cx, cy = self._map(ncx, ncy, margin)
+            x1, y1 = self._map(nx1, ny1, margin)
+
+            dash_pen.setColor(QColor(col))
+            p.setPen(dash_pen)
+            p.setBrush(Qt.NoBrush)
+            path = QPainterPath()
+            path.moveTo(x0, y0)
+            path.quadTo(cx, cy, x1, y1)
+            p.drawPath(path)
+
+            # Trajectory label near control point
+            p.setFont(QFont("Arial Narrow", 7))
+            p.setPen(QColor(col))
+            p.drawText(int(cx) + 4, int(cy) - 3, label)
+
+            # Travelling blip dot
+            bx, by = self._bezier(self._blip_t[i], (x0, y0), (cx, cy), (x1, y1))
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(col))
+            p.drawEllipse(int(bx) - 3, int(by) - 3, 6, 6)
+
+        # ── Catalog objects ───────────────────────────────────────────────────
+        font_lbl = QFont("Arial Narrow", 8)
+
+        for obj in self._CATALOG:
+            if obj["type"] == "nebula":
+                continue
+
+            drift = obj.get("drift", 0.0)
+            dpx = math.sin(self._phase * drift) * 4.0 if drift else 0.0
+            dpy = math.cos(self._phase * drift * 0.7) * 3.0 if drift else 0.0
+
+            ox, oy = self._map(obj["nx"], obj["ny"], margin)
+            ox += dpx
+            oy += dpy
+            sz   = obj["size"]
+            col  = QColor(obj["color"])
+            kind = obj["type"]
+
+            if kind == "star":
+                alpha = int(180 + 75 * math.sin(self._phase * 1.3 + obj["nx"] * 10))
+                col.setAlpha(alpha)
+                p.setPen(Qt.NoPen)
+                p.setBrush(col)
+                p.drawEllipse(int(ox - sz / 2), int(oy - sz / 2), sz, sz)
+                glow = QColor(obj["color"]); glow.setAlpha(38)
+                p.setBrush(glow)
+                p.drawEllipse(int(ox - sz), int(oy - sz), sz * 2, sz * 2)
+
+            elif kind == "planet":
+                p.setPen(Qt.NoPen)
+                p.setBrush(col)
+                p.drawEllipse(int(ox - sz / 2), int(oy - sz / 2), sz, sz)
+                hl = QColor("#FFFFFF"); hl.setAlpha(60)
+                p.setBrush(hl)
+                hs = max(sz // 3, 2)
+                p.drawEllipse(int(ox - sz / 2 + 2), int(oy - sz / 2 + 2), hs, hs)
+
+            elif kind == "galaxy":
+                rx, ry = sz, int(sz * 0.55)
+                p.save()
+                p.translate(ox, oy)
+                p.rotate(30)
+                col.setAlpha(160)
+                p.setPen(Qt.NoPen)
+                p.setBrush(col)
+                p.drawEllipse(-rx, -ry, rx * 2, ry * 2)
+                core = QColor("#FFFFFF"); core.setAlpha(200)
+                p.setBrush(core)
+                p.drawEllipse(-3, -2, 6, 4)
+                tick_pen = QPen(QColor(obj["color"]), 1)
+                p.setPen(tick_pen)
+                for arm in range(4):
+                    a = math.radians(arm * 90)
+                    p.drawLine(int(5 * math.cos(a)), int(3 * math.sin(a)),
+                               int(rx * 0.8 * math.cos(a)), int(ry * 0.8 * math.sin(a)))
+                p.restore()
+
+            elif kind == "starbase":
+                half = sz // 2
+                p.save()
+                p.translate(ox, oy)
+                p.rotate(45)
+                p.setPen(QPen(col, 2))
+                p.setBrush(Qt.NoBrush)
+                p.drawRect(-half, -half, half * 2, half * 2)
+                p.drawLine(-half, 0, half, 0)
+                p.drawLine(0, -half, 0, half)
+                p.restore()
+                blink_a = int(100 + 155 * math.sin(self._phase * 2.5 + obj["nx"] * 5))
+                bc = QColor(obj["color"]); bc.setAlpha(blink_a)
+                p.setPen(Qt.NoPen)
+                p.setBrush(bc)
+                p.drawEllipse(int(ox - 2), int(oy - 2), 4, 4)
+
+            elif kind == "wormhole":
+                for ring in range(3):
+                    r = sz // 2 + ring * 6
+                    rc = QColor(obj["color"])
+                    rc.setAlpha(220 - ring * 60)
+                    rp = QPen(rc, 1)
+                    rp.setStyle(Qt.DashLine if ring % 2 == 0 else Qt.DotLine)
+                    p.setPen(rp)
+                    p.setBrush(Qt.NoBrush)
+                    p.drawEllipse(int(ox - r), int(oy - r), r * 2, r * 2)
+                pr = int(4 + 3 * math.sin(self._phase * 3))
+                cc = QColor(obj["color"]); cc.setAlpha(200)
+                p.setPen(Qt.NoPen)
+                p.setBrush(cc)
+                p.drawEllipse(int(ox - pr), int(oy - pr), pr * 2, pr * 2)
+
+            # Object label
+            lc2 = QColor(LIGHT_BLUE); lc2.setAlpha(200)
+            p.setPen(lc2)
+            p.setFont(font_lbl)
+            p.drawText(int(ox) + sz // 2 + 3, int(oy) + 4, obj["name"])
+
+        # ── Flashing colored points ────────────────────────────────────────────
+        for fp in self._flash_pts:
+            fx, fy = self._map(fp["nx"], fp["ny"], margin)
+            brightness = (math.sin(self._phase * fp["speed"] + fp["phase"]) + 1) / 2
+            fc = QColor.fromHsvF(fp["hue"] / 360.0, 0.9, 0.95,
+                                 brightness * 0.88 + 0.12)
+            p.setPen(Qt.NoPen)
+            p.setBrush(fc)
+            r = max(int(1 + brightness * 2.5), 1)
+            p.drawEllipse(int(fx) - r, int(fy) - r, r * 2, r * 2)
+
+        # ── Chart footer label ─────────────────────────────────────────────────
+        p.setPen(QColor(GOLD))
+        p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+        p.drawText(margin + 4, H - margin - 5, "STELLAR CARTOGRAPHY  ·  LIVE SCAN")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 #  PAGES
 # ═════════════════════════════════════════════════════════════════════════════
 
 class NavPage(QWidget):
-    """Scrolling live sensor-telemetry feed (from main2.py)."""
+    """Scrolling live sensor-telemetry feed + stellar navigation chart."""
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(self)
@@ -173,6 +470,11 @@ class NavPage(QWidget):
         )
         header.setAlignment(Qt.AlignRight)
         layout.addWidget(header)
+
+        # Body: telemetry feed on the left, chart fills the rest
+        body = QHBoxLayout()
+        body.setSpacing(8)
+        layout.addLayout(body)
 
         self.feed = QTextEdit()
         self.feed.setReadOnly(True)
@@ -185,7 +487,11 @@ class NavPage(QWidget):
             }}
             QScrollBar:vertical {{ width: 0px; }}
         """)
-        layout.addWidget(self.feed)
+        self.feed.setFixedWidth(225)
+        body.addWidget(self.feed)
+
+        self._chart = StellarChartWidget()
+        body.addWidget(self._chart, stretch=1)
 
         self._timer = QTimer()
         self._timer.timeout.connect(self._tick)
