@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 import pygame
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QThread, Signal
-from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QRadialGradient, QBrush, QFont
+from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QRadialGradient, QBrush, QFont, QFontMetrics
 
 # ── PALETTE ──────────────────────────────────────────────────────────────────
 TANGERINE  = "#FF9966"
@@ -283,7 +283,7 @@ class StellarChartWidget(QWidget):
             y += step
 
         # Sector corner labels
-        p.setFont(QFont("Arial Narrow", 7))
+        p.setFont(QFont("Arial Narrow", max(9, int(H * 0.014))))
         lc = QColor(LIGHT_BLUE)
         lc.setAlpha(80)
         p.setPen(lc)
@@ -331,7 +331,7 @@ class StellarChartWidget(QWidget):
             p.drawPath(path)
 
             # Trajectory label near control point
-            p.setFont(QFont("Arial Narrow", 7))
+            p.setFont(QFont("Arial Narrow", max(9, int(H * 0.014))))
             p.setPen(QColor(col))
             p.drawText(int(cx) + 4, int(cy) - 3, label)
 
@@ -342,7 +342,7 @@ class StellarChartWidget(QWidget):
             p.drawEllipse(int(bx) - 3, int(by) - 3, 6, 6)
 
         # ── Catalog objects ───────────────────────────────────────────────────
-        font_lbl = QFont("Arial Narrow", 8)
+        font_lbl = QFont("Arial Narrow", max(11, int(H * 0.016)))
 
         for obj in self._CATALOG:
             if obj["type"] == "nebula":
@@ -409,7 +409,7 @@ class StellarChartWidget(QWidget):
                 p.drawLine(-half, 0, half, 0)
                 p.drawLine(0, -half, 0, half)
                 p.restore()
-                blink_a = int(100 + 155 * math.sin(self._phase * 2.5 + obj["nx"] * 5))
+                blink_a = max(0, min(255, int(100 + 155 * math.sin(self._phase * 2.5 + obj["nx"] * 5))))
                 bc = QColor(obj["color"]); bc.setAlpha(blink_a)
                 p.setPen(Qt.NoPen)
                 p.setBrush(bc)
@@ -450,7 +450,7 @@ class StellarChartWidget(QWidget):
 
         # ── Chart footer label ─────────────────────────────────────────────────
         p.setPen(QColor(GOLD))
-        p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+        p.setFont(QFont("Arial Narrow", max(11, int(H * 0.016)), QFont.Bold))
         p.drawText(margin + 4, H - margin - 5, "STELLAR CARTOGRAPHY  ·  LIVE SCAN")
 
 
@@ -1063,18 +1063,63 @@ class TacConsoleWidget(QWidget):
         ("LCARS-19720",  LIGHT_BLUE),
     ]
 
+    _LOG_POOL = [
+        "[0722.A] WEAPONS SYS NOMINAL   PWR=97.4%",
+        "[0722.B] PHASER ARRAY LOCKED   AZ=+014.7",
+        "[0722.C] TORP BAY PRESSURIZED  SEAL=OK",
+        "[0722.D] RELOAD CYCLE COMPLETE  BAY 1-7",
+        "[0722.E] SELF-DIAGNOSTIC PASS  0 ERRORS",
+        "[0722.F] INTERLOCK CONFIRMED   AUTH=BRIDGE",
+        "[SCAN]   PROXIMITY ALERT       RANGE=3.2 AU",
+        "[SCAN]   PASSIVE SENSOR SWEEP  ACTIVE",
+        "[SCAN]   WARP SIGNATURE DETECT  BRG=227",
+        "[SCAN]   LONG RANGE ARRAY LOCK  OK",
+        "[DEF]    SHIELD FREQ ROTATED   Δ=+0.031",
+        "[DEF]    HULL INTEGRITY  99.1%  STA=NOM",
+        "[DEF]    METAPHASIC MODULATION  OK",
+        "[DEF]    ABLATIVE ARMOR ONLINE  STANDBY",
+        "[EMIT]   EMITTER ARRAY CALIB   DONE",
+        "[EMIT]   COLLIMATOR ALIGN ERR  0.001°",
+        "[EMIT]   BEAM PATTERN LOCKED   GRID-9",
+        "[OPS]    POWER REROUTE DONE    EPS=OK",
+        "[OPS]    RELAYS 7-ALPHA NOMINAL",
+        "[OPS]    DAMAGE CTRL TEAM ALPHA STANDBY",
+        "[COMM]   SUBSPACE CHANNEL 14   OPEN",
+        "[COMM]   ENCRYPTED BURST TX    SFLT-CMD",
+        "[COMM]   HAILING FREQ CLEAR    LOCK=CFM",
+        "[KEY]    AUTHORIZATION GRANTED  LVL=4",
+        "[KEY]    TACTICAL OVERRIDE      ACCEPTED",
+        "[LOCK]   TARGET LOCK ACQUIRED  ID=UNK-Δ9",
+        "[LOCK]   FIRING SOLUTION DONE  P=94.2%",
+        "[LOCK]   TRAJ CORRECTION        Δv=0.003c",
+        "[MODE]   COMBAT ALERT          STATUS=RED",
+        "[MODE]   STANDBY DEACTIVATED   ARMED",
+        "[SCI]    QUANTUM RESONANCE     Δ=2.17e-9",
+        "[SCI]    NEUTRINO FLUX NOMINAL  0.047",
+        "[SCI]    ANTIMATTER CONTAIN     99.9%",
+        "[SCI]    TACHYON PULSE DETECT  BRG=041",
+        "[WEAP]   PHOTON TORP MK-V RDY  7 ROUNDS",
+        "[WEAP]   QUANTUM YIELD CALIB   SET=HIGH",
+        "[WEAP]   FUSE DELAY PROGRAMMED 0.04s",
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._phase     = 0.0
-        self._fire      = [0.0] * self._N_TORPS
-        self._fire_cd   = 60
+        self._phase       = 0.0
+        self._fire        = [0.0] * self._N_TORPS
+        self._spent       = [False] * self._N_TORPS
+        self._refill_t    = 0       # steps until reload starts (120 = 6 s)
+        self._refill_anim = 1.0     # 0.0=off-screen-left → 1.0=in-place
+        self._fire_cd     = 60
+        self._torp_snd    = Beeper(resource_path("sounds/tng_torpedo3_clean.mp3"))
+        self._snd_played  = [False] * self._N_TORPS   # per-slot sound gate
         self._view_mode = 0    # 0=rack  1=cutaway
         self._view_t    = 0
         self._act_btn   = 0
         self._rows      = []
         self._row_t     = 0
         rng = random.Random(17)
-        for _ in range(9):
+        for _ in range(8):
             self._rows.append(self._gen_row(rng))
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._step)
@@ -1083,7 +1128,7 @@ class TacConsoleWidget(QWidget):
     @staticmethod
     def _gen_row(rng=None):
         r = rng or random
-        return "  ".join(str(r.randint(10, 9999999)) for _ in range(r.randint(7, 11)))
+        return r.choice(TacConsoleWidget._LOG_POOL)
 
     def _step(self):
         self._phase    = (self._phase + 0.05) % (2 * math.pi)
@@ -1097,20 +1142,44 @@ class TacConsoleWidget(QWidget):
             if self._view_mode == 0:
                 self._act_btn = random.randint(0, len(self._PILL_BTNS) - 1)
 
-        if self._row_t >= 6:
+        if self._row_t >= 12:   # was 6 → 50 % slower scroll
             self._row_t = 0
             self._rows.append(self._gen_row())
-            if len(self._rows) > 14:
+            if len(self._rows) > 8:
                 self._rows.pop(0)
 
         for i in range(self._N_TORPS):
             if self._fire[i] > 0:
-                self._fire[i] = min(1.0, self._fire[i] + 0.022)
+                # Phase-1 (0→0.75): slow glow in-place; Phase-2 (0.75→1.0): fast exit
+                prev = self._fire[i]
+                adv  = 0.010 if prev < 0.75 else 0.050
+                self._fire[i] = min(1.0, self._fire[i] + adv)
+                # Play sound exactly when crossing into Phase-2 (torpedo starts moving)
+                if (prev < 0.75 <= self._fire[i]
+                        and not self._snd_played[i]
+                        and self.isVisible()):
+                    self._torp_snd.play()
+                    self._snd_played[i] = True
                 if self._fire[i] >= 1.0:
-                    self._fire[i] = 0.0
+                    self._fire[i]       = 0.0
+                    self._spent[i]      = True
+                    self._snd_played[i] = False   # reset for next launch
 
-        if self._fire_cd <= 0 and self._view_mode == 0:
-            idle = [i for i, s in enumerate(self._fire) if s == 0.0]
+        # ── Refill logic ──────────────────────────────────────────────────────────
+        if all(self._spent) and self._refill_t == 0 and self._refill_anim >= 1.0:
+            self._refill_t = 120                 # 6 s wait
+        if self._refill_t > 0:
+            self._refill_t -= 1
+            if self._refill_t == 0:
+                self._spent       = [False] * self._N_TORPS
+                self._snd_played  = [False] * self._N_TORPS
+                self._refill_anim = 0.0          # start slide-in
+        if 0.0 <= self._refill_anim < 1.0:
+            self._refill_anim = min(1.0, self._refill_anim + 0.017)  # ~3 s
+
+        if self._fire_cd <= 0 and self._view_mode == 0 and self._refill_anim >= 1.0:
+            idle = [i for i, s in enumerate(self._fire)
+                    if s == 0.0 and not self._spent[i]]
             if idle:
                 self._fire[random.choice(idle)] = 0.01
             self._fire_cd = random.randint(45, 110)
@@ -1142,12 +1211,23 @@ class TacConsoleWidget(QWidget):
         p.setBrush(QColor(LIGHT_BLUE))
         p.drawRect(x, y, 16, h)
         pad = 3
-        ih  = max(22, (h - 4) // len(self._SIDEBAR_ITEMS) - pad)
-        p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+        n   = len(self._SIDEBAR_ITEMS)
+        ih  = max(22, (h - 4) // n - pad)
+        iw  = w - 22
+        # Largest font where the longest single word ("COMMUNICATIONS", 14 chars)
+        # fits horizontally in iw AND two lines still fit vertically in ih.
+        fs = 6
+        for _fs in range(36, 5, -1):
+            _fm = QFontMetrics(QFont("Arial Narrow", _fs, QFont.Bold))
+            if (_fm.horizontalAdvance("COMMUNICATIONS") <= iw - 8
+                    and _fm.height() * 2 <= ih - 2):
+                fs = _fs
+                break
+        p.setFont(QFont("Arial Narrow", fs, QFont.Bold))
+        _cw = int(Qt.AlignHCenter | Qt.AlignVCenter) | int(Qt.TextWordWrap)
         for i, (lbl, color, active) in enumerate(self._SIDEBAR_ITEMS):
             iy = y + 2 + i * (ih + pad)
             ix = x + 19
-            iw = w - 22
             bc = QColor(color)
             if not active:
                 bc.setAlpha(195)
@@ -1155,7 +1235,7 @@ class TacConsoleWidget(QWidget):
             p.setBrush(bc)
             p.drawRoundedRect(ix, iy, iw, ih, ih // 2, ih // 2)
             p.setPen(QColor(BG_BLACK))
-            p.drawText(ix + 6, iy + ih - 6, lbl)
+            p.drawText(ix, iy, iw, ih, _cw, lbl)
 
     # ── header ────────────────────────────────────────────────────────────────
 
@@ -1164,12 +1244,17 @@ class TacConsoleWidget(QWidget):
         dw  = int(w * 0.50)
         rx  = x + dw
 
-        p.setFont(QFont("Courier New", 8))
+        lh   = max(14, int(h * 0.095))
+        fs   = max(7, int(lh * 0.54))          # -30 % from previous 0.77
+        p.setFont(QFont("Courier New", fs))
         p.setPen(QColor(LIGHT_BLUE))
-        lh  = 13
-        vis = min(len(self._rows), h // lh)
+        vis = min(len(self._rows), h // lh, 8)
+        p.setClipRect(x, y, dw - 6, h)
         for i in range(vis):
-            p.drawText(x + 5, y + 11 + i * lh, self._rows[-(vis - i)])
+            p.drawText(x + 5, y + 4 + i * lh, dw - 16, lh,
+                       Qt.AlignLeft | Qt.AlignVCenter,
+                       self._rows[-(vis - i)])
+        p.setClipping(False)
 
         p.setFont(QFont("Arial Narrow", max(10, int(h * 0.17)), QFont.Bold))
         p.setPen(QColor("#FFFFFF"))
@@ -1197,51 +1282,69 @@ class TacConsoleWidget(QWidget):
             p.setBrush(bc)
             p.drawRoundedRect(bx, _by, bw, bh, bh // 2, bh // 2)
             p.setPen(QColor(BG_BLACK))
-            p.setFont(QFont("Arial Narrow", 7, QFont.Bold))
-            p.drawText(bx + 6, _by + bh - 7, lbl)
+            p.setFont(QFont("Arial Narrow", max(9, int(bh * 0.19)), QFont.Bold))
+            p.drawText(bx + 2, _by, bw - 4, bh,
+                       Qt.AlignHCenter | Qt.AlignVCenter | Qt.TextWordWrap, lbl)
 
     # ── status bar strip ──────────────────────────────────────────────────────
 
     def _p_statusbar(self, p, x, y, w, h):
         p.fillRect(x, y, w, h, QColor(4, 4, 14))
-        half = w // 2
+        half  = w // 2
+        row_h = h // 2
+        # Unified font size for all bar labels; ~20% smaller than former left font
+        fs    = max(7, int(h * 0.17))
+
+        # ── Left: TRACTOR BEAM / NETWORK  (label left, bar right) ─────────────
+        lbl_w = int(half * 0.40)
+        bar_x = x + lbl_w + 6
+        bar_w = half - lbl_w - 12
         for i, lbl in enumerate(["TRACTOR BEAM", "NETWORK"]):
-            by   = y + 2 + i * (h // 2 - 1)
-            barw = half // 2 - 4
-            fill = int(barw * (0.55 + 0.30 * math.sin(self._phase + i)))
+            by    = y + i * row_h
+            bar_y = by + 3
+            bar_h = row_h - 6
+            # Fill varies ±10 % around 62 %
+            fill  = int(bar_w * (0.62 + 0.10 * math.sin(self._phase + i)))
+            p.setPen(QColor(LIGHT_BLUE))
+            p.setFont(QFont("Arial Narrow", fs))
+            p.drawText(x + 2, by, lbl_w - 2, row_h,
+                       Qt.AlignRight | Qt.AlignVCenter, lbl)
             p.setPen(QPen(QColor(LIGHT_BLUE), 1))
             p.setBrush(Qt.NoBrush)
-            p.drawRect(x + 2, by + 2, barw, h // 2 - 6)
+            p.drawRect(bar_x, bar_y, bar_w, bar_h)
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(LIGHT_BLUE))
-            p.drawRect(x + 2, by + 2, fill, h // 2 - 6)
-            p.setPen(QColor(LIGHT_BLUE))
-            p.setFont(QFont("Arial Narrow", 7))
-            p.drawText(x + barw + 8, by + h // 2 - 4, lbl)
+            p.drawRect(bar_x, bar_y, fill, bar_h)
+
+        # ── Right: 4 system bars  (label left, bar right) ─────────────────────
         rlbls = [
             ("SUBSPACE SYSTEMS",         LIGHT_BLUE),
             ("PHOTON/QUANTUM TORPEDOES", TANGERINE),
             ("PROPULSION SYSTEMS",       LIGHT_BLUE),
             ("SYSTEM LOCATIONS",         LIGHT_BLUE),
         ]
-        rh2 = h // 2 - 2
+        cell_w = half // 2
+        lbl2_w = int(cell_w * 0.48)
+        bar2_w = cell_w - lbl2_w - 8
+        _wrap  = int(Qt.AlignLeft | Qt.AlignVCenter) | int(Qt.TextWordWrap)
         for i, (lbl, col) in enumerate(rlbls):
             ci   = i % 2
             ri   = i // 2
-            _by  = y + 2 + ri * rh2
-            _bx  = x + half + ci * (half // 2)
-            bw2  = half // 2 - 68
-            fill = int(bw2 * (0.6 + 0.28 * math.sin(self._phase * 0.9 + i * 0.7)))
+            _by  = y + ri * row_h
+            _bx  = x + half + ci * cell_w
+            bx2  = _bx + lbl2_w + 4
+            # Fill varies ±10 % around 65 %
+            fill = int(bar2_w * (0.65 + 0.10 * math.sin(self._phase * 0.9 + i * 0.7)))
             fc   = QColor(col)
+            p.setPen(QColor(LIGHT_BLUE))
+            p.setFont(QFont("Arial Narrow", fs))
+            p.drawText(_bx + 2, _by, lbl2_w - 2, row_h, _wrap, lbl)
             p.setPen(QPen(fc, 1))
             p.setBrush(Qt.NoBrush)
-            p.drawRect(_bx + 66, _by + 2, bw2, rh2 - 4)
+            p.drawRect(bx2, _by + 3, bar2_w, row_h - 6)
             p.setPen(Qt.NoPen)
             p.setBrush(fc)
-            p.drawRect(_bx + 66, _by + 2, fill, rh2 - 4)
-            p.setPen(QColor(LIGHT_BLUE))
-            p.setFont(QFont("Arial Narrow", 6))
-            p.drawText(_bx + 2, _by + rh2 - 3, lbl)
+            p.drawRect(bx2, _by + 3, fill, row_h - 6)
 
     # ── torpedo bay ───────────────────────────────────────────────────────────
 
@@ -1251,7 +1354,7 @@ class TacConsoleWidget(QWidget):
         else:
             self._p_rack(p, x, y, w, h)
         p.setPen(QColor(LIGHT_BLUE))
-        p.setFont(QFont("Arial Narrow", 15, QFont.Bold))
+        p.setFont(QFont("Arial Narrow", max(16, int(h * 0.043)), QFont.Bold))
         p.drawText(x + 10, y + h - 8, "PHOTON TORPEDO Mk-V")
 
     # ── rack view ─────────────────────────────────────────────────────────────
@@ -1260,14 +1363,57 @@ class TacConsoleWidget(QWidget):
         slot = (h - 28) // self._N_TORPS
         tw   = int(w * 0.58)
         tx   = x + int(w * 0.16)
+
+        # Ease-out slide-in offset (quadratic) during refill animation
+        ra        = self._refill_anim
+        ease      = ra * (2.0 - ra)                         # 0→1 ease-out
+        slide_off = int((1.0 - ease) * (tw + int(w * 0.16))) if ra < 1.0 else 0
+
         for i in range(self._N_TORPS):
+            if self._spent[i]:
+                continue                                     # vanished after launch
             th   = max(18, slot - 10)
             ty   = y + 4 + i * slot + (slot - th) // 2
             fs   = self._fire[i]
-            off  = int(fs * w * 0.38)
-            alph = max(0, int(255 * (1.0 - fs * 1.45)))
-            puls = 0.82 + 0.18 * math.sin(self._phase * 1.6 + i * 0.65) if fs == 0 else 1.0
-            self._p_torp(p, tx + off, ty, tw, th, alph, puls, fs > 0)
+            # Non-linear: torpedo glows in-place for first 75 % of timer,
+            # then shoots off right quickly in the last 25 %.
+            t    = max(0.0, (fs - 0.75) / 0.25)            # 0→1 only in last quarter
+            off  = int(t * w * 0.62)
+            alph = max(0, int(255 * (1.0 - t)))
+            # Subtle pulse while still (t==0), no pulse while moving
+            puls = (0.82 + 0.18 * math.sin(self._phase * 1.6 + i * 0.65)
+                    if t == 0.0 else 1.0)
+            p.setClipRect(x, y, int(w * 0.78), h)
+            self._p_torp(p, tx + off - slide_off, ty, tw, th, alph, puls, fs > 0)
+            p.setClipping(False)
+
+        # ── Popup overlay ──────────────────────────────────────────────────────────
+        if all(self._spent) and self._refill_t > 0:
+            secs = max(1, (self._refill_t * 50 + 999) // 1000)
+            msg  = f"●  ALL TORPEDOES LAUNCHED  ●  RELOAD IN {secs}s"
+            al   = 255
+        elif self._refill_anim < 1.0:
+            msg  = "  RELOADING TORPEDO BAYS — STAND BY  "
+            al   = max(0, int(255 * (1.0 - self._refill_anim * 1.4)))
+        else:
+            msg  = None
+            al   = 0
+        if msg:
+            mf  = QFont("Arial Narrow", max(12, int(h * 0.055)), QFont.Bold)
+            fm  = QFontMetrics(mf)
+            mw  = fm.horizontalAdvance(msg) + 28
+            mh  = max(28, int(h * 0.12))
+            mx  = x + (w - mw) // 2
+            my  = y + (h - mh) // 2
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(40, 0, 0, min(210, al)))
+            p.drawRoundedRect(mx, my, mw, mh, mh // 2, mh // 2)
+            p.setPen(QPen(QColor(200, 40, 40, al), 2))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(mx, my, mw, mh, mh // 2, mh // 2)
+            p.setPen(QColor(255, 90, 90, al))
+            p.setFont(mf)
+            p.drawText(mx, my, mw, mh, Qt.AlignCenter, msg)
 
     # ── single torpedo ────────────────────────────────────────────────────────
 
@@ -1357,7 +1503,7 @@ class TacConsoleWidget(QWidget):
             p.setBrush(gold)
             p.drawEllipse(ax - 3, ty - 3, 6, 6)
             p.setPen(gold)
-            p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+            p.setFont(QFont("Arial Narrow", max(8, int(h * 0.017)), QFont.Bold))
             p.drawText(ax + 8, lbl_y_top + 10, lbl)
 
         for lbl, frac in [
@@ -1372,7 +1518,7 @@ class TacConsoleWidget(QWidget):
             p.setBrush(gold)
             p.drawEllipse(ax - 3, ty + th - 3, 6, 6)
             p.setPen(gold)
-            p.setFont(QFont("Arial Narrow", 8, QFont.Bold))
+            p.setFont(QFont("Arial Narrow", max(8, int(h * 0.017)), QFont.Bold))
             p.drawText(ax + 8, lbl_y_bot, lbl)
 
 
@@ -1394,12 +1540,9 @@ class SysPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        header = QLabel("SYS-CORE  —  PRIMARY SYSTEMS OVERVIEW")
-        header.setStyleSheet(
-            f"color: {GOLD}; font-size: 20px; font-family: 'Arial Narrow'; font-weight: bold;"
-        )
-        header.setAlignment(Qt.AlignRight)
-        layout.addWidget(header)
+        self._hdr = QLabel("SYS-CORE  —  PRIMARY SYSTEMS OVERVIEW")
+        self._hdr.setAlignment(Qt.AlignRight)
+        layout.addWidget(self._hdr)
 
         self.info = QTextEdit()
         self.info.setReadOnly(True)
@@ -1407,17 +1550,39 @@ class SysPage(QWidget):
         self.info.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {BG_BLACK}; color: {LIGHT_BLUE};
-                font-family: 'Courier New'; font-size: 13px;
+                font-family: 'Courier New';
                 border: 1px solid {LILAC}; border-radius: 5px;
             }}
             QScrollBar:vertical {{ width: 0px; }}
         """)
         layout.addWidget(self.info)
 
+        self._apply_fonts(1040)
         self._timer = QTimer()
         self._timer.timeout.connect(self._tick)
         self._timer.start(2000)
         self._tick()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_fonts(self.height())
+
+    def _apply_fonts(self, H):
+        H = max(200, H)
+        fsz_hdr  = max(20, int(H * 0.038))
+        fsz_body = max(14, int(H * 0.026))
+        self._hdr.setStyleSheet(
+            f"color:{GOLD}; font-size:{fsz_hdr}px;"
+            f" font-family:'Arial Narrow'; font-weight:bold;"
+        )
+        self.info.setStyleSheet(f"""
+            QTextEdit {{
+                background-color:{BG_BLACK}; color:{LIGHT_BLUE};
+                font-family:'Courier New'; font-size:{fsz_body}px;
+                border:1px solid {LILAC}; border-radius:5px;
+            }}
+            QScrollBar:vertical {{ width:0px; }}
+        """)
 
     def _tick(self):
         self.info.clear()
@@ -1580,13 +1745,15 @@ class WarpPage(QWidget):
     def _paint_sidebar(self, p, x, y, w, h):
         n     = len(self._labels)
         row_h = h // (n + 1)
-        p.setFont(QFont("Arial Narrow", 9))
+        rh    = max(18, int(row_h * 0.62))
+        fs    = max(10, int(rh * 0.58))
+        p.setFont(QFont("Arial Narrow", fs))
         for i, lbl in enumerate(self._labels):
             ly = y + (i + 1) * row_h - row_h // 2
             bg = QColor(TANGERINE) if i in (3, 8) else QColor(LIGHT_BLUE)
-            p.fillRect(x + 2, ly - 10, w - 8, 18, bg)
+            p.fillRect(x + 2, ly - rh // 2, w - 8, rh, bg)
             p.setPen(QPen(QColor(BG_BLACK)))
-            p.drawText(x + 2, ly - 10, w - 8, 18,
+            p.drawText(x + 2, ly - rh // 2, w - 8, rh,
                        Qt.AlignRight | Qt.AlignVCenter, lbl)
             p.setPen(QPen(QColor(LILAC), 1))
             p.drawLine(w - 2, ly, w + 2, ly)
@@ -1671,13 +1838,15 @@ class WarpPage(QWidget):
         p.drawLine(cx2,     cy1 + ch,            cx2,     cy1 + ch - arm)
 
         # ── Scale markers ─────────────────────────────────────────────────────
-        p.setFont(QFont("Arial Narrow", 9))
+        mk_fs = max(10, int(ch * 0.026))
+        mk_th = max(14, int(ch * 0.040))
+        p.setFont(QFont("Arial Narrow", mk_fs))
         p.setPen(QPen(QColor(190, 190, 190)))
         for val in range(self._SMIN, self._SMAX + 1, 10):
             t  = (val - self._SMIN) / sr
             vy = cy1 + int(t * ch)
             p.drawLine(cx1 - 7, vy, cx1 - 1, vy)
-            p.drawText(x, vy - 7, SCL_W - 9, 14,
+            p.drawText(x, vy - mk_th // 2, SCL_W - 9, mk_th,
                        Qt.AlignRight | Qt.AlignVCenter, f"— {val}")
 
         # ── Arrow indicator ───────────────────────────────────────────────────
@@ -1699,25 +1868,15 @@ class VoicePage(QWidget):
         super().__init__()
         layout = QVBoxLayout(self)
 
-        header = QLabel("VOICE-AI  —  COMMAND INTERFACE")
-        header.setStyleSheet(
-            f"color: {GOLD}; font-size: 20px; font-family: 'Arial Narrow'; font-weight: bold;"
-        )
-        header.setAlignment(Qt.AlignRight)
-        layout.addWidget(header)
+        self._hdr = QLabel("VOICE-AI  —  COMMAND INTERFACE")
+        self._hdr.setAlignment(Qt.AlignRight)
+        layout.addWidget(self._hdr)
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setFrameStyle(QFrame.NoFrame)
-        self.log.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: {BG_BLACK}; color: {LIGHT_BLUE};
-                font-family: 'Courier New'; font-size: 13px;
-                border: 1px solid {GOLD}; border-radius: 5px;
-            }}
-            QScrollBar:vertical {{ width: 0px; }}
-        """)
         layout.addWidget(self.log)
+        self._apply_fonts(1040)
         self.log.append(
             f'<span style="color:{LILAC}">  SAY "COMPUTER ..." TO ISSUE A COMMAND</span>'
         )
@@ -1725,6 +1884,27 @@ class VoicePage(QWidget):
             f'<span style="color:{LIGHT_BLUE}">'
             f'  COMMANDS: NAVIGATION · ENGINEERING · TACTICAL · SYSTEM · WARPFIELD · VOICE · EXIT</span>'
         )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_fonts(self.height())
+
+    def _apply_fonts(self, H):
+        H = max(200, H)
+        fsz_hdr  = max(20, int(H * 0.038))
+        fsz_body = max(14, int(H * 0.026))
+        self._hdr.setStyleSheet(
+            f"color:{GOLD}; font-size:{fsz_hdr}px;"
+            f" font-family:'Arial Narrow'; font-weight:bold;"
+        )
+        self.log.setStyleSheet(f"""
+            QTextEdit {{
+                background-color:{BG_BLACK}; color:{LIGHT_BLUE};
+                font-family:'Courier New'; font-size:{fsz_body}px;
+                border:1px solid {GOLD}; border-radius:5px;
+            }}
+            QScrollBar:vertical {{ width:0px; }}
+        """)
 
     def add_command(self, cmd):
         self.log.append(f'<span style="color:#66FF66">▶ RECEIVED: {cmd.upper()}</span>')
