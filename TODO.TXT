@@ -1,0 +1,12 @@
+-TAC-MODULE:
+  - arm/reload/fire torpedos by voice command
+- add sound on/off button
+- play ranmdom sounds from \sounds dir:
+  sounds\ambient_*, sounds\computerbeep_*
+  delay randomly from 10 to 15 secs (adjustable using vars)
+- RED ALERT scenario with sound and red glowing animations popup 
+- ENG-GRID: Warp core collaps with animations and warning sounds\warningwarpcorecollapse_ep.mp3 
+- structural integrity scenario with sounds\warningstructuralintegrity_ep.mp3
+- SYS-CORE: add real temperatures from psutil (ask AI if this is possible)
+- NEW PANEL : shield view with drawings
+- 

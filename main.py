@@ -4,6 +4,7 @@ import random
 import datetime
 import math
 import psutil
+import platform as _platform
 import speech_recognition as sr
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -13,6 +14,19 @@ from PySide6.QtWidgets import (
 import pygame
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QThread, Signal, QRect
 from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QRadialGradient, QBrush, QFont, QFontMetrics
+
+# ── TEMPERATURE BACKEND ──────────────────────────────────────────────────────
+_WMI_INST = None
+_TEMP_BACKEND = None
+if _platform.system() in ("Darwin", "Linux", "FreeBSD"):
+    _TEMP_BACKEND = "psutil"
+elif _platform.system() == "Windows":
+    try:
+        import wmi as _wmi
+        _WMI_INST = _wmi.WMI(namespace="root/wmi")
+        _TEMP_BACKEND = "wmi"
+    except Exception:
+        pass
 
 # ── PALETTE ──────────────────────────────────────────────────────────────────
 TANGERINE  = "#FF9966"
@@ -1684,6 +1698,40 @@ class TacPage(QWidget):
         layout.addWidget(self._console)
 
 
+_TEMP_OFFLINE_MSGS = [
+    "WARNING — THERMAL SENSOR ARRAY OFFLINE. CONTACT CHIEF ENGINEER.",
+    "SENSOR FAULT — THERMAL GRID INOPERATIVE. REROUTE VIA ENG CONSOLE.",
+    "THERMAL SUBSYSTEM UNRESPONSIVE — REINITIALIZE FROM MAIN ENG PANEL.",
+    "NO SIGNAL FROM THERMAL SENSOR BUS — SEE LIEUTENANT COMMANDER.",
+    "ALERT — THERMAL ARRAY OFFLINE. DIAGNOSTIC REQUIRED: ENG SECTION 12.",
+]
+
+
+def _get_temps():
+    """Return list of (label, celsius) from platform thermal sensors, or []."""
+    if _TEMP_BACKEND == "psutil":
+        try:
+            data = psutil.sensors_temperatures()
+            result = []
+            for chip, entries in data.items():
+                for e in entries:
+                    lbl = (e.label or chip).upper()
+                    result.append((lbl, e.current))
+            return result
+        except Exception:
+            return []
+    elif _TEMP_BACKEND == "wmi" and _WMI_INST is not None:
+        try:
+            result = []
+            for i, t in enumerate(_WMI_INST.MSAcpi_ThermalZoneTemperature()):
+                celsius = (t.CurrentTemperature / 10.0) - 273.15
+                result.append((f"THERMAL ZONE {i}", celsius))
+            return result
+        except Exception:
+            return []
+    return []
+
+
 class SysPage(QWidget):
     """System core — primary overview dashboard."""
     def __init__(self):
@@ -1741,14 +1789,29 @@ class SysPage(QWidget):
         cpu  = psutil.cpu_percent()
         mem  = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
-        for line in [
+        lines = [
             f'<span style="color:{GOLD}">▶ LCARS SYSTEM STATUS — {now.strftime("%Y-%m-%d %H:%M:%S")}</span>',
             f'<span style="color:{LIGHT_BLUE}">  CPU UTILIZATION ....... {cpu:.1f}%</span>',
             f'<span style="color:{LIGHT_BLUE}">  MEMORY USED ........... {mem.percent:.1f}%'
             f'  ({mem.used // 1024**2} MB / {mem.total // 1024**2} MB)</span>',
             f'<span style="color:{LIGHT_BLUE}">  DISK UTILIZATION ...... {disk.percent:.1f}%</span>',
-            f'<span style="color:#66FF66">  ALL PRIMARY SYSTEMS ... NOMINAL</span>',
-        ]:
+        ]
+        temps = _get_temps()
+        if temps:
+            for lbl, celsius in temps:
+                lbl = lbl[:20]
+                dots = '.' * max(1, 22 - len(lbl))
+                color = "#FF6666" if celsius > 80 else LIGHT_BLUE
+                lines.append(
+                    f'<span style="color:{color}">  {lbl} {dots} {celsius:.1f}\u00b0C</span>'
+                )
+        else:
+            msg = random.choice(_TEMP_OFFLINE_MSGS)
+            lines.append(
+                f'<span style="color:{TANGERINE}">  \u26a0  {msg}</span>'
+            )
+        lines.append(f'<span style="color:#66FF66">  ALL PRIMARY SYSTEMS ... NOMINAL</span>')
+        for line in lines:
             self.info.append(line)
 
 
