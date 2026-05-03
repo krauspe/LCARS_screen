@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QSizePolicy
 )
 import pygame
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QThread, Signal
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QThread, Signal, QRect
 from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QRadialGradient, QBrush, QFont, QFontMetrics
 
 # ── PALETTE ──────────────────────────────────────────────────────────────────
@@ -1050,17 +1050,17 @@ class TacConsoleWidget(QWidget):
         ("EMITTERS",          LIGHT_BLUE, False),
         ("OPS MANAGEMENT",    LIGHT_BLUE, False),
         ("COMMUNICATIONS",    LIGHT_BLUE, False),
-        ("LOCK",              GOLD,       True),
+        ("DETAILS VIEW",      GOLD,       True),
         ("MODE SELECT",       LIGHT_BLUE, False),
     ]
 
     _PILL_BTNS = [
-        ("TARGET SCAN",  LIGHT_BLUE),
-        ("RESET",        TANGERINE),
-        ("EXIT",         "#CC7722"),
-        ("ALERT",        LIGHT_BLUE),
-        ("DATA RESEARCH","#BB6611"),
-        ("LCARS-19720",  LIGHT_BLUE),
+        ("TARGET SCAN",     LIGHT_BLUE),
+        ("ARM TORPEDO(S)",  TANGERINE),
+        ("FIRE",            "#CC7722"),
+        ("ALERT",           LIGHT_BLUE),
+        ("TORPEDO COUNT",   "#BB6611"),
+        ("RELOAD",          LIGHT_BLUE),
     ]
 
     _LOG_POOL = [
@@ -1105,22 +1105,27 @@ class TacConsoleWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._phase       = 0.0
-        self._fire        = [0.0] * self._N_TORPS
-        self._spent       = [False] * self._N_TORPS
-        self._refill_t    = 0       # steps until reload starts (120 = 6 s)
-        self._refill_anim = 1.0     # 0.0=off-screen-left → 1.0=in-place
-        self._fire_cd     = 60
-        self._torp_snd    = Beeper(resource_path("sounds/tng_torpedo3_clean.mp3"))
-        self._snd_played  = [False] * self._N_TORPS   # per-slot sound gate
-        self._view_mode = 0    # 0=rack  1=cutaway
-        self._view_t    = 0
-        self._act_btn   = 0
-        self._rows      = []
-        self._row_t     = 0
+        self._phase         = 0.0
+        self._fire          = [0.0] * self._N_TORPS
+        self._spent         = [False] * self._N_TORPS
+        self._refill_t      = 0       # steps until reload starts (120 = 6 s)
+        self._refill_anim   = 1.0     # 0.0=off-screen-left → 1.0=in-place
+        self._torp_snd      = Beeper(resource_path("sounds/tng_torpedo3_clean.mp3"))
+        self._snd_played    = [False] * self._N_TORPS   # per-slot sound gate
+        self._view_mode     = 0    # 0=rack  1=cutaway
+        self._n_arm         = 1
+        self._armed         = [False] * self._N_TORPS
+        self._fire_queue    = []
+        self._pill_rects    = []
+        self._sidebar_rects = []
+        self._rows          = []
+        self._row_t         = 0
         rng = random.Random(17)
         for _ in range(8):
             self._rows.append(self._gen_row(rng))
+        self._seq_timer = QTimer(self)
+        self._seq_timer.setSingleShot(True)
+        self._seq_timer.timeout.connect(self._seq_fire_next)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._step)
         self._timer.start(50)
@@ -1131,16 +1136,8 @@ class TacConsoleWidget(QWidget):
         return r.choice(TacConsoleWidget._LOG_POOL)
 
     def _step(self):
-        self._phase    = (self._phase + 0.05) % (2 * math.pi)
-        self._view_t  += 1
-        self._row_t   += 1
-        self._fire_cd -= 1
-
-        if self._view_t >= 240:
-            self._view_t    = 0
-            self._view_mode = 1 - self._view_mode
-            if self._view_mode == 0:
-                self._act_btn = random.randint(0, len(self._PILL_BTNS) - 1)
+        self._phase  = (self._phase + 0.05) % (2 * math.pi)
+        self._row_t += 1
 
         if self._row_t >= 12:   # was 6 → 50 % slower scroll
             self._row_t = 0
@@ -1150,39 +1147,34 @@ class TacConsoleWidget(QWidget):
 
         for i in range(self._N_TORPS):
             if self._fire[i] > 0:
-                # Phase-1 (0→0.75): slow glow in-place; Phase-2 (0.75→1.0): fast exit
                 prev = self._fire[i]
-                adv  = 0.010 if prev < 0.75 else 0.050
-                self._fire[i] = min(1.0, self._fire[i] + adv)
-                # Play sound exactly when crossing into Phase-2 (torpedo starts moving)
-                if (prev < 0.75 <= self._fire[i]
-                        and not self._snd_played[i]
-                        and self.isVisible()):
-                    self._torp_snd.play()
-                    self._snd_played[i] = True
-                if self._fire[i] >= 1.0:
-                    self._fire[i]       = 0.0
-                    self._spent[i]      = True
-                    self._snd_played[i] = False   # reset for next launch
+                if self._armed[i]:
+                    # Arming glow: 0 → 0.75 in ~0.5 s (10 steps × 50 ms), then hold
+                    self._fire[i] = min(0.75, self._fire[i] + 0.075)
+                else:
+                    # Firing exit: 0.75 → 1.0 (fast)
+                    self._fire[i] = min(1.0, self._fire[i] + 0.050)
+                    # Sound triggers when crossing 0.76 (first firing step)
+                    if (prev < 0.76 <= self._fire[i]
+                            and not self._snd_played[i]
+                            and self.isVisible()):
+                        self._torp_snd.play()
+                        self._snd_played[i] = True
+                    if self._fire[i] >= 1.0:
+                        self._fire[i]       = 0.0
+                        self._spent[i]      = True
+                        self._snd_played[i] = False   # reset for next launch
 
-        # ── Refill logic ──────────────────────────────────────────────────────────
-        if all(self._spent) and self._refill_t == 0 and self._refill_anim >= 1.0:
-            self._refill_t = 120                 # 6 s wait
+        # ── Refill countdown (triggered by RELOAD button) ─────────────────────────
         if self._refill_t > 0:
             self._refill_t -= 1
             if self._refill_t == 0:
                 self._spent       = [False] * self._N_TORPS
+                self._armed       = [False] * self._N_TORPS
                 self._snd_played  = [False] * self._N_TORPS
                 self._refill_anim = 0.0          # start slide-in
         if 0.0 <= self._refill_anim < 1.0:
             self._refill_anim = min(1.0, self._refill_anim + 0.017)  # ~3 s
-
-        if self._fire_cd <= 0 and self._view_mode == 0 and self._refill_anim >= 1.0:
-            idle = [i for i, s in enumerate(self._fire)
-                    if s == 0.0 and not self._spent[i]]
-            if idle:
-                self._fire[random.choice(idle)] = 0.01
-            self._fire_cd = random.randint(45, 110)
 
         self.update()
 
@@ -1206,6 +1198,7 @@ class TacConsoleWidget(QWidget):
     # ── sidebar ───────────────────────────────────────────────────────────────
 
     def _p_sidebar(self, p, x, y, w, h):
+        self._sidebar_rects = []
         p.fillRect(x, y, w, h, QColor(BG_BLACK))
         p.setPen(Qt.NoPen)
         p.setBrush(QColor(LIGHT_BLUE))
@@ -1236,6 +1229,7 @@ class TacConsoleWidget(QWidget):
             p.drawRoundedRect(ix, iy, iw, ih, ih // 2, ih // 2)
             p.setPen(QColor(BG_BLACK))
             p.drawText(ix, iy, iw, ih, _cw, lbl)
+            self._sidebar_rects.append(QRect(ix, iy, iw, ih))
 
     # ── header ────────────────────────────────────────────────────────────────
 
@@ -1263,28 +1257,82 @@ class TacConsoleWidget(QWidget):
         p.setPen(QColor(LIGHT_BLUE))
         p.drawText(rx + 5, y + int(h * 0.36), "EQUIPMENT AND TECHNOLOGY 68-3")
 
+        self._pill_rects = []
         ba_y      = y + int(h * 0.41)
         ba_h      = h - int(h * 0.41) - 4
         cols, rows = 3, 2
         pad        = 4
         bw         = (w - dw - pad * (cols + 1)) // cols
         bh         = max(20, (ba_h - pad * (rows + 1)) // rows)
+        _all_spent_idle = (all(self._spent) and self._refill_t == 0
+                           and self._refill_anim >= 1.0)
         for idx, (lbl, col) in enumerate(self._PILL_BTNS):
             c   = idx % cols
             r   = idx // cols
             bx  = rx + pad + c * (bw + pad)
             _by = ba_y + pad + r * (bh + pad)
+            self._pill_rects.append(QRect(bx, _by, bw, bh))
             bc  = QColor(col)
-            if idx == self._act_btn:
-                fl  = (math.sin(self._phase * 4) + 1) / 2
-                bc  = bc.lighter(int(100 + 55 * fl))
+
+            # ── per-button colour / label overrides ───────────────────────────
+            if idx == 1:
+                # ARM: tangerine base, text changes to "ARMED !" when armed
+                lbl = "ARMED !" if any(self._armed) else "ARM TORPEDO(S)"
+            elif idx == 2:
+                # FIRE: white when idle, red (pulsing) when armed
+                if any(self._armed):
+                    fl  = (math.sin(self._phase * 5) + 1) / 2
+                    bc  = QColor(255, int(30 + 30 * fl), int(30 * fl))   # pulsing red
+                else:
+                    bc  = QColor("#DDDDDD")   # white / light grey
+            elif idx == 5:
+                # RELOAD: twinkles yellow/blue when all spent & idle, else LIGHT_BLUE
+                if _all_spent_idle:
+                    fl  = (math.sin(self._phase * 6) + 1) / 2
+                    r_  = int(fl * 255)
+                    g_  = int(fl * 204)
+                    b_  = int((1 - fl) * 200 + 55)
+                    bc  = QColor(r_, g_, b_)  # oscillates GOLD ↔ LIGHT_BLUE
+                elif self._refill_anim < 1.0:
+                    bc  = QColor(LIGHT_BLUE)  # solid blue while reloading
+                # (else stays col = LIGHT_BLUE from _PILL_BTNS)
+
             p.setPen(Qt.NoPen)
             p.setBrush(bc)
             p.drawRoundedRect(bx, _by, bw, bh, bh // 2, bh // 2)
             p.setPen(QColor(BG_BLACK))
             p.setFont(QFont("Arial Narrow", max(9, int(bh * 0.19)), QFont.Bold))
-            p.drawText(bx + 2, _by, bw - 4, bh,
-                       Qt.AlignHCenter | Qt.AlignVCenter | Qt.TextWordWrap, lbl)
+            if idx == 4:
+                # ── TORPEDO COUNT: [ − | <n> | + ] ──────────────────────────────
+                third  = bw // 3
+                sym_fs = max(10, int(bh * 0.40))
+                num_fs = max(11, int(bh * 0.45))
+                # "−" zone (left third — darker pill cap)
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(col).darker(150))
+                p.drawRoundedRect(bx, _by, third, bh, bh // 2, bh // 2)
+                p.setPen(QColor(BG_BLACK))
+                p.setFont(QFont("Arial Narrow", sym_fs, QFont.Bold))
+                p.drawText(bx, _by, third, bh, Qt.AlignHCenter | Qt.AlignVCenter, "−")
+                # number zone (center)
+                p.setPen(QColor(BG_BLACK))
+                p.setFont(QFont("Arial Narrow", num_fs, QFont.Bold))
+                p.drawText(bx + third, _by, bw - 2 * third, bh,
+                           Qt.AlignHCenter | Qt.AlignVCenter, str(self._n_arm))
+                # "+" zone (right third — darker pill cap)
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor(col).darker(150))
+                p.drawRoundedRect(bx + bw - third, _by, third, bh, bh // 2, bh // 2)
+                p.setPen(QColor(BG_BLACK))
+                p.setFont(QFont("Arial Narrow", sym_fs, QFont.Bold))
+                p.drawText(bx + bw - third, _by, third, bh,
+                           Qt.AlignHCenter | Qt.AlignVCenter, "+")
+            else:
+                # Use black text on FIRE white, white text on pulsing red FIRE
+                if idx == 2 and any(self._armed):
+                    p.setPen(QColor("#FFFFFF"))
+                p.drawText(bx + 2, _by, bw - 4, bh,
+                           Qt.AlignHCenter | Qt.AlignVCenter | Qt.TextWordWrap, lbl)
 
     # ── status bar strip ──────────────────────────────────────────────────────
 
@@ -1384,13 +1432,16 @@ class TacConsoleWidget(QWidget):
             puls = (0.82 + 0.18 * math.sin(self._phase * 1.6 + i * 0.65)
                     if t == 0.0 else 1.0)
             p.setClipRect(x, y, int(w * 0.78), h)
-            self._p_torp(p, tx + off - slide_off, ty, tw, th, alph, puls, fs > 0)
+            self._p_torp(p, tx + off - slide_off, ty, tw, th, alph, puls, fs > 0.75, armed=self._armed[i])
             p.setClipping(False)
 
         # ── Popup overlay ──────────────────────────────────────────────────────────
-        if all(self._spent) and self._refill_t > 0:
+        if self._refill_t > 0:
             secs = max(1, (self._refill_t * 50 + 999) // 1000)
-            msg  = f"●  ALL TORPEDOES LAUNCHED  ●  RELOAD IN {secs}s"
+            msg  = f"●  RELOAD IN {secs}s  —  STAND BY  ●"
+            al   = 255
+        elif all(self._spent) and self._refill_anim >= 1.0:
+            msg  = "●  ALL TORPEDOES SPENT  —  PRESS RELOAD  ●"
             al   = 255
         elif self._refill_anim < 1.0:
             msg  = "  RELOADING TORPEDO BAYS — STAND BY  "
@@ -1417,7 +1468,7 @@ class TacConsoleWidget(QWidget):
 
     # ── single torpedo ────────────────────────────────────────────────────────
 
-    def _p_torp(self, p, x, y, w, h, alpha=255, pulse=1.0, firing=False):
+    def _p_torp(self, p, x, y, w, h, alpha=255, pulse=1.0, firing=False, armed=False):
         """Dark capsule body + red stripe + blinking indicator dot + nose glow."""
         cy = y + h // 2
         # Body
@@ -1440,17 +1491,28 @@ class TacConsoleWidget(QWidget):
             gc = QColor(255, 80, 0, int(alpha * 0.35))
             p.setBrush(gc)
             p.drawRect(sx - 3, cy - sh - 2, sw + 6, sh * 2 + 4)
-        # Indicator dot
+        # Indicator dot (gold when armed, orange when firing, red otherwise)
         dr    = max(3, h // 5)
         dx    = x + w - h // 2 - 4
         blink = int(alpha * (0.45 + 0.55 * abs(math.sin(self._phase * 3.5))))
-        dc    = QColor(255, 160, 0, blink) if firing else QColor(200, 20, 20, blink)
+        if armed and not firing:
+            dc = QColor(GOLD)
+            dc.setAlpha(int(alpha * (0.55 + 0.45 * abs(math.sin(self._phase * 2.5)))))
+        elif firing:
+            dc = QColor(255, 160, 0, blink)
+        else:
+            dc = QColor(200, 20, 20, blink)
         p.setPen(Qt.NoPen)
         p.setBrush(dc)
         p.drawEllipse(dx - dr, cy - dr, dr * 2, dr * 2)
-        # Nose radial highlight
+        # Nose radial highlight (gold when armed, grey otherwise)
         ng = QRadialGradient(x + h // 2, cy, h // 2)
-        ng.setColorAt(0.0, QColor(130, 130, 140, int(alpha * 0.55)))
+        if armed and not firing:
+            nose_c = QColor(GOLD)
+            nose_c.setAlpha(int(alpha * 0.75))
+        else:
+            nose_c = QColor(130, 130, 140, int(alpha * 0.55))
+        ng.setColorAt(0.0, nose_c)
         ng.setColorAt(1.0, QColor(0, 0, 0, 0))
         p.setBrush(QBrush(ng))
         p.drawEllipse(x, y, h, h)
@@ -1520,6 +1582,95 @@ class TacConsoleWidget(QWidget):
             p.setPen(gold)
             p.setFont(QFont("Arial Narrow", max(8, int(h * 0.017)), QFont.Bold))
             p.drawText(ax + 8, lbl_y_bot, lbl)
+
+    # ── mouse interaction ─────────────────────────────────────────────────────
+
+    def mousePressEvent(self, event):
+        pos = event.position().toPoint()
+        # Sidebar hit-test
+        for i, rect in enumerate(self._sidebar_rects):
+            if rect.contains(pos):
+                if i == 9:
+                    self._on_sidebar_details_view()
+                return
+        # Pill hit-test
+        for idx, rect in enumerate(self._pill_rects):
+            if rect.contains(pos):
+                if idx == 1:
+                    self._on_arm()
+                elif idx == 2:
+                    self._on_fire()
+                elif idx == 4:
+                    third = rect.width() // 3
+                    if pos.x() < rect.x() + third:
+                        self._on_minus()
+                    elif pos.x() >= rect.x() + rect.width() - third:
+                        self._on_plus()
+                elif idx == 5:
+                    self._on_reload()
+                return
+
+    # ── action handlers ───────────────────────────────────────────────────────
+
+    def _available_count(self):
+        return sum(1 for i in range(self._N_TORPS)
+                   if not self._spent[i] and self._fire[i] == 0.0)
+
+    def _on_arm(self):
+        # Cancel any in-progress arming animations before re-arming
+        for i in range(self._N_TORPS):
+            if self._armed[i] and 0.0 < self._fire[i] <= 0.75:
+                self._fire[i] = 0.0
+        self._armed = [False] * self._N_TORPS
+        armed_so_far = 0
+        for i in range(self._N_TORPS):
+            if armed_so_far >= self._n_arm:
+                break
+            if not self._spent[i] and self._fire[i] == 0.0:
+                self._armed[i] = True
+                self._fire[i]  = 0.01   # start 0.5s arming glow
+                armed_so_far  += 1
+        self.update()
+
+    def _on_fire(self):
+        queue = [i for i in range(self._N_TORPS) if self._armed[i]]
+        if not queue:
+            return
+        self._fire_queue = queue
+        first = self._fire_queue.pop(0)
+        self._fire[first]  = 0.751  # skip straight to exit phase — no delay
+        self._armed[first] = False
+        if self._fire_queue:
+            self._seq_timer.start(1000)
+
+    def _seq_fire_next(self):
+        if not self._fire_queue:
+            return
+        idx = self._fire_queue.pop(0)
+        self._fire[idx]  = 0.751  # skip straight to exit phase
+        self._armed[idx] = False
+        if self._fire_queue:
+            self._seq_timer.start(1000)
+
+    def _on_reload(self):
+        self._seq_timer.stop()
+        self._fire_queue = []
+        self._armed      = [False] * self._N_TORPS
+        self._refill_t   = 120
+        self.update()
+
+    def _on_plus(self):
+        avail = max(1, self._available_count())
+        self._n_arm = min(self._n_arm + 1, avail)
+        self.update()
+
+    def _on_minus(self):
+        self._n_arm = max(1, self._n_arm - 1)
+        self.update()
+
+    def _on_sidebar_details_view(self):
+        self._view_mode = 1 - self._view_mode
+        self.update()
 
 
 class TacPage(QWidget):
