@@ -1,3 +1,8 @@
+ON NEW INSTALLATIONS:
+# Install the PortAudio C library via Homebrew, then the Python package
+brew install portaudio
+pip install pyaudio
+
 -TAC-MODULE:
   - arm/reload/fire torpedos by voice command
 - add sound on/off button
@@ -7,6 +12,6 @@
 - RED ALERT scenario with sound and red glowing animations popup 
 - ENG-GRID: Warp core collaps with animations and warning sounds\warningwarpcorecollapse_ep.mp3 
 - structural integrity scenario with sounds\warningstructuralintegrity_ep.mp3
-- SYS-CORE: add real temperatures from psutil (ask AI if this is possible)
+- SYS-CORE: add real temperatures (DONE — psutil/WMI + iStatistica API on macOS)
 - NEW PANEL : shield view with drawings
 - 

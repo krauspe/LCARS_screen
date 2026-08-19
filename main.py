@@ -3,6 +3,8 @@ import os
 import random
 import datetime
 import math
+import json
+import urllib.request
 import psutil
 import platform as _platform
 import speech_recognition as sr
@@ -18,7 +20,11 @@ from PySide6.QtGui import QPainter, QPainterPath, QColor, QPen, QRadialGradient,
 # ── TEMPERATURE BACKEND ──────────────────────────────────────────────────────
 _WMI_INST = None
 _TEMP_BACKEND = None
-if _platform.system() in ("Darwin", "Linux", "FreeBSD"):
+# iStatistica Pro web-access endpoint (macOS). IP filter only, no passkey.
+_ISTATISTICA_URL = "http://127.0.0.1:4027"
+if _platform.system() == "Darwin":
+    _TEMP_BACKEND = "istatistica"
+elif _platform.system() in ("Linux", "FreeBSD"):
     _TEMP_BACKEND = "psutil"
 elif _platform.system() == "Windows":
     try:
@@ -1729,7 +1735,47 @@ def _get_temps():
             return result
         except Exception:
             return []
+    elif _TEMP_BACKEND == "istatistica":
+        try:
+            with urllib.request.urlopen(
+                f"{_ISTATISTICA_URL}/api", timeout=3
+            ) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            return _parse_istatistica_sensors(payload)
+        except Exception:
+            return []
     return []
+
+
+def _parse_istatistica_sensors(payload):
+    """Parse iStatistica `/api` payload into [(label, celsius)].
+
+    Real shape: ``{"sensors": {"Memory Bank 8": "38", ...},
+    "sensors_settingsIsFarenheit": False}`` — a dict of label → temperature
+    string. Temperatures may be °C or °F depending on that setting.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    sensors = payload.get("sensors")
+    if not isinstance(sensors, dict):
+        return []
+
+    is_f = bool(payload.get("sensors_settingsIsFarenheit", False))
+
+    result = []
+    for label, value in sensors.items():
+        try:
+            t = float(value)
+        except (TypeError, ValueError):
+            continue
+        if is_f:
+            t = (t - 32.0) * 5.0 / 9.0
+        result.append((str(label).upper(), t))
+
+    # Stable, human-friendly ordering
+    result.sort(key=lambda item: item[0])
+    return result
 
 
 class SysPage(QWidget):
@@ -1806,7 +1852,10 @@ class SysPage(QWidget):
                     f'<span style="color:{color}">  {lbl} {dots} {celsius:.1f}\u00b0C</span>'
                 )
         else:
-            msg = random.choice(_TEMP_OFFLINE_MSGS)
+            if _TEMP_BACKEND == "istatistica":
+                msg = "iSTATISTICA API OFFLINE — SIMULATED THERMAL DATA"
+            else:
+                msg = random.choice(_TEMP_OFFLINE_MSGS)
             lines.append(
                 f'<span style="color:{TANGERINE}">  \u26a0  {msg}</span>'
             )
