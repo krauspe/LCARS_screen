@@ -1778,6 +1778,22 @@ def _parse_istatistica_sensors(payload):
     return result
 
 
+def _disk_usage():
+    """Return disk usage for the user-data volume (macOS APFS aware).
+
+    On macOS the root `/` mount is a small sealed system snapshot, so its
+    ``percent`` understates real usage. The actual user data lives on
+    ``/System/Volumes/Data``. Non-macOS platforms keep their default `/`.
+    """
+    if _platform.system() == "Darwin":
+        for path in ("/System/Volumes/Data", "/"):
+            try:
+                return psutil.disk_usage(path)
+            except Exception:
+                continue
+    return psutil.disk_usage('/')
+
+
 class SysPage(QWidget):
     """System core — primary overview dashboard."""
     def __init__(self):
@@ -1834,13 +1850,14 @@ class SysPage(QWidget):
         now  = datetime.datetime.now()
         cpu  = psutil.cpu_percent()
         mem  = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+        disk = _disk_usage()
         lines = [
             f'<span style="color:{GOLD}">▶ LCARS SYSTEM STATUS — {now.strftime("%Y-%m-%d %H:%M:%S")}</span>',
             f'<span style="color:{LIGHT_BLUE}">  CPU UTILIZATION ....... {cpu:.1f}%</span>',
             f'<span style="color:{LIGHT_BLUE}">  MEMORY USED ........... {mem.percent:.1f}%'
             f'  ({mem.used // 1024**2} MB / {mem.total // 1024**2} MB)</span>',
-            f'<span style="color:{LIGHT_BLUE}">  DISK UTILIZATION ...... {disk.percent:.1f}%</span>',
+            f'<span style="color:{LIGHT_BLUE}">  DISK UTILIZATION ...... {disk.percent:.1f}%'
+            f'  ({disk.used // 1024**2} MB / {disk.total // 1024**2} MB)</span>',
         ]
         temps = _get_temps()
         if temps:
